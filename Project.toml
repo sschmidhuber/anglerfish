@@ -1,0 +1,10 @@
+name = "Anglerfish"
+uuid = "ca26f490-bc68-4489-97cc-95a4c39097e5"
+authors = ["Stefan Schmidhuber"]
+version = "0.1.0"
+
+[workspace]
+projects = ["test"]
+
+[compat]
+julia = "1.10"
