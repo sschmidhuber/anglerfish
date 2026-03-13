@@ -1,0 +1,17 @@
+# Anglerfish Config
+
+[user_data]
+first_name = "Grace"
+last_name = "Hopper"
+day_of_birth = "1906-12-09"
+place_of_birth = "New York City, USA"
+email = "grace.hopper@navy.mil"
+phone = "(212) 555-0101"
+
+[user_address]
+street_name = "Turing Street"
+street_number = 42
+locality_identifier = "Apt 4B"
+city = "New Haven"
+postal_code = "06510"
+country = "USA"

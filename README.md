@@ -10,6 +10,8 @@ A personal MCP server, to enable AI supported workflows on your local machine.
 * Self hosted
 * Open source
 
+# Ideas
+
 ## Tools
 
 - [x] Current Date and Time
@@ -23,3 +25,14 @@ A personal MCP server, to enable AI supported workflows on your local machine.
 - [ ] Image editing
 - [ ] Weather data
 - [ ] Routplanning and traffic data
+
+## Installation Options
+
+- [ ] Julia App
+- [ ] Docker Container
+
+## Configuration UI
+
+- [ ] CLI
+- [ ] GTK
+- [ ] Qt
