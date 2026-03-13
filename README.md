@@ -15,8 +15,8 @@ A personal MCP server, to enable AI supported workflows on your local machine.
 ## Tools
 
 - [x] Current Date and Time
-- [ ] User data
-- [ ] e-Mails
+- [x] User data
+- [x] e-Mails
 - [ ] Calendar
 - [ ] Data visualization
 - [ ] Creating diagrams

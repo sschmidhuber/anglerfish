@@ -10,6 +10,7 @@ const TOOLS = ModelContextProtocol.MCPTool[]
 const INIT_FUNCTIONS = Function[]
 
 include("tools/basic.jl")
+include("tools/email.jl")
 
 export main
 

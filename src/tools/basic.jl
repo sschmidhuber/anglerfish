@@ -2,13 +2,13 @@
 
 function init_date_time_tool(config::Dict)
     @info "initialize date_time_tool"
-    date_time = MCPTool(
+    date_time_tool = MCPTool(
         name="date_time",
         description="returns the current local date and time as timestamp (ISO 8601 format: YYYY-MM-DDThh:mm:ss.fff)",
         parameters=[],
         handler=params -> TextContent(; type="text", text=string(now()))
     )
-    push!(TOOLS, date_time)
+    push!(TOOLS, date_time_tool)
 end
 
 push!(INIT_FUNCTIONS, init_date_time_tool)
@@ -18,7 +18,7 @@ push!(INIT_FUNCTIONS, init_date_time_tool)
 
 function init_user_data_tool(config::Dict)
     @info "initialize user_data_tool"
-    user_data = MCPTool(
+    user_data_tool = MCPTool(
         name="user_data",
         description="returns a set of data about the user, including name, day of birth, address, email ...",
         parameters=[],
@@ -28,7 +28,7 @@ function init_user_data_tool(config::Dict)
         ) |> JSON.json
         )
     )
-    push!(TOOLS, user_data)
+    push!(TOOLS, user_data_tool)
 end
 
 push!(INIT_FUNCTIONS, init_user_data_tool)
