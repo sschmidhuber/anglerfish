@@ -1,7 +1,7 @@
 # compose email
 
-function init_compose_email_tool(config::Dict)
-    @info "initialize compose_email_tool"
+function init_email_tools(config::Dict)
+    @info "initialize email tools"
     compose_email_tool = MCPTool(
         name="compose_email",
         description="composes an email based on the given subject, content, recipient and attachment. The email is not actually sent, but is opened in the users email client to review and send.",
@@ -43,14 +43,17 @@ function init_compose_email_tool(config::Dict)
                 required = false
             )
         ],
-        handler=params -> TextContent(; type="text", text=compose_email(
-            get(params, "subject", ""),
-            get(params, "to", []),
-            get(params, "cc", []),
-            get(params, "bcc", []),
-            get(params, "content", ""),
-            get(params, "attachments", [])
-        ))
+        handler=params -> begin
+            msg = compose_email(
+                haskey(params, "subject") ? params["subject"] : "",
+                haskey(params, "to") ? params["to"] : [],
+                haskey(params, "cc") ? params["cc"] : [],
+                haskey(params, "bcc") ? params["bcc"] : [],
+                haskey(params, "content") ? params["content"] : "",
+                haskey(params, "attachments") ? params["attachments"] : []
+            )
+            return TextContent(; type="text", text=msg)
+        end
     )
     push!(TOOLS, compose_email_tool)    
 end
@@ -67,11 +70,11 @@ function compose_email(subject="", to=[], cc=[], bcc=[], content="", attachments
         !isempty(subject) && append!(exec, ["--subject", subject])
         if !isempty(cc)
             append!(exec, ["--cc"])
-            append!(cc)
+            append!(exec, cc)
         end
         if !isempty(bcc)
             append!(exec, ["--bcc"])
-            append!(bcc)
+            append!(exec, bcc)
         end
         !isempty(content) && append!(exec, ["--body", content])
         for attachment in attachments
@@ -79,8 +82,7 @@ function compose_email(subject="", to=[], cc=[], bcc=[], content="", attachments
         end
         !isempty(to) && append!(exec, to)
 
-        cmd = Cmd(Cmd(exec); detach=true)
-        run(cmd)
+        run(Cmd(exec))
     catch err
         return "failed to compose email: $err"
     end
@@ -88,4 +90,6 @@ function compose_email(subject="", to=[], cc=[], bcc=[], content="", attachments
     return "successfully opened email client with precomposed email"
 end
 
-push!(INIT_FUNCTIONS, init_compose_email_tool)
+if Sys.islinux()
+    push!(INIT_FUNCTIONS, init_email_tools)
+end

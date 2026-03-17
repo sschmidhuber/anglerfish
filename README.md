@@ -14,10 +14,11 @@ A personal MCP server, to enable AI supported workflows on your local machine.
 
 ## Tools
 
-- [x] Current Date and Time
-- [x] User data
-- [x] e-Mails
-- [ ] Calendar
+- [x] current date and time
+- [x] access user data
+- [x] compose e-Mails
+- [ ] create calendar items
+- [ ] file system access
 - [ ] Data visualization
 - [ ] Creating diagrams
 - [ ] Creating documents

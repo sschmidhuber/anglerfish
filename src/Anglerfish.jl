@@ -4,13 +4,16 @@ using BaseDirs
 using Dates
 using JSON
 using ModelContextProtocol
+using TimeZones
 using TOML
+using UUIDs
 
 const TOOLS = ModelContextProtocol.MCPTool[]
 const INIT_FUNCTIONS = Function[]
 
 include("tools/basic.jl")
 include("tools/email.jl")
+include("tools/calendar.jl")
 
 export main
 
