@@ -8,7 +8,7 @@ using TimeZones
 using TOML
 using UUIDs
 
-const TOOLS = ModelContextProtocol.MCPTool[]
+const TOOLS = Dict{String,ModelContextProtocol.MCPTool}()
 const INIT_FUNCTIONS = Function[]
 
 include("tools/basic.jl")
@@ -17,8 +17,8 @@ include("tools/calendar.jl")
 
 export main
 
-function @main(ARGS)
-    @info "initialize Anglerfish"
+
+function init()
     config_path = joinpath(BaseDirs.CONFIG_HOME, "anglerfish", "config.toml")
     if !isfile(config_path)
         mkpath(joinpath(BaseDirs.CONFIG_HOME, "anglerfish"))
@@ -30,12 +30,21 @@ function @main(ARGS)
     for init in INIT_FUNCTIONS
         init(config)
     end
+end
+
+
+function @main(ARGS)
+    if length(ARGS) == 1 && ARGS[1] == "TEST_MODE"
+        return nothing
+    end
+
+    init()
 
     @info "start Anglerfish MCP server"
     server = mcp_server(;
         name="Anglerfish",
         version="0.1.0",
-        tools=TOOLS,
+        tools=TOOLS |> values |> collect,
         description="A MCP server which turns your favorite MCP client into a agentic personal assistant"
     )
 

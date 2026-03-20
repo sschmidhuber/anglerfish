@@ -4,11 +4,21 @@ function init_date_time_tool(config::Dict)
     @info "initialize date time tool"
     date_time_tool = MCPTool(
         name="date_time",
-        description="returns the current local date and time as timestamp (ISO 8601 format: YYYY-MM-DDThh:mm:ss.fff)",
+        description="returns the current local date, time, timezone, day of week and week of year",
         parameters=[],
-        handler=params -> TextContent(; type="text", text=string(now()))
+        handler=params -> TextContent(; type="text", text=JSON.json(date_time()))
     )
-    push!(TOOLS, date_time_tool)
+    TOOLS[date_time_tool.name] = date_time_tool
+end
+
+function date_time()
+    Dict(
+        "time" => Dates.format(now(), "HH:MM"),
+        "date" => today() |> string,
+        "timezone" => localzone() |> string,
+        "day_of_week" => lowercase(string(Dates.dayname(now()))),
+        "week_of_year" => week(now())
+    )
 end
 
 push!(INIT_FUNCTIONS, init_date_time_tool)
@@ -28,7 +38,7 @@ function init_user_data_tool(config::Dict)
         ) |> JSON.json
         )
     )
-    push!(TOOLS, user_data_tool)
+    TOOLS[user_data_tool.name] = user_data_tool
 end
 
 push!(INIT_FUNCTIONS, init_user_data_tool)
@@ -40,18 +50,18 @@ function init_system_info_tool(config::Dict)
     @info "initialize system info tool"
     system_info_tool = MCPTool(
         name="system_info",
-        description="returns a set of data about the system, including os, cpu and memory (in GiB)",
+        description="returns a set of data about the system, including os, cpu and memory",
         parameters=[],
         handler=params -> TextContent(; type="text", text=Dict(
             "os" => Sys.KERNEL |> string,
             "cpu" => Sys.CPU_NAME,
             "architecture" => Sys.ARCH, 
             "cores" => Sys.CPU_THREADS,
-            "memory" => ceil(Int, Sys.total_memory() / 1_073_741_824)
+            "memory" => "$(ceil(Int, Sys.total_memory() / 1_073_741_824)) GiB"
             ) |> JSON.json
         )
     )
-    push!(TOOLS, system_info_tool)
+    TOOLS[system_info_tool.name] = system_info_tool
 end
 
 push!(INIT_FUNCTIONS, init_system_info_tool)
@@ -74,7 +84,7 @@ function init_open_file_tool(config::Dict)
         ],
         handler=params -> TextContent(; type="text", text=open_file(params["file_path"]))
     )
-    push!(TOOLS, open_file_tool)    
+    TOOLS[open_file_tool.name] = open_file_tool
 end
 
 
@@ -94,12 +104,13 @@ function open_file(path)
         elseif Sys.isapple()
             run(`open "$path"`)
         else
-            run(`xdg-open "$path"`)
+            run(Cmd(["xdg-open", path]))
         end
-        return "successfully opened file: $path"
     catch err
         return "failed to open file: $err"
     end
+    
+    return "successfully opened file: $path"
 end
 
 push!(INIT_FUNCTIONS, init_open_file_tool)

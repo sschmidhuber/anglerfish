@@ -45,17 +45,17 @@ function init_email_tools(config::Dict)
         ],
         handler=params -> begin
             msg = compose_email(
-                haskey(params, "subject") ? params["subject"] : "",
-                haskey(params, "to") ? params["to"] : [],
-                haskey(params, "cc") ? params["cc"] : [],
-                haskey(params, "bcc") ? params["bcc"] : [],
-                haskey(params, "content") ? params["content"] : "",
-                haskey(params, "attachments") ? params["attachments"] : []
+                get(params, "subject", ""),
+                get(params, "to", []),
+                get(params, "cc", []),
+                get(params, "bcc", []),
+                get(params, "content", ""),
+                get(params, "attachments", [])
             )
             return TextContent(; type="text", text=msg)
         end
     )
-    push!(TOOLS, compose_email_tool)    
+    TOOLS[compose_email_tool.name] = compose_email_tool
 end
 
 
@@ -82,7 +82,7 @@ function compose_email(subject="", to=[], cc=[], bcc=[], content="", attachments
         end
         !isempty(to) && append!(exec, to)
 
-        run(Cmd(exec))
+        run(Cmd(exec); wait=false)
     catch err
         return "failed to compose email: $err"
     end
