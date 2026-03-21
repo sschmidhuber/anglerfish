@@ -17,19 +17,21 @@ A personal MCP server, to enable AI supported workflows on your local machine.
 - [x] current date and time
 - [x] access user data
 - [x] compose e-Mails
-- [ ] create calendar items
+- [x] create calendar items
 - [ ] file system access
+- [ ] create documents
+- [ ] Shell scripting
 - [ ] Data visualization
 - [ ] Creating diagrams
-- [ ] Creating documents
-- [ ] Shell scripting
 - [ ] Image editing
 - [ ] Weather data
-- [ ] Routplanning and traffic data
+- [ ] Routplanning, traffic and geo data
 
 ## Installation Options
 
+- [ ] Dependency management
 - [ ] Julia App
+- [ ] Precompiled bundle
 - [ ] Docker Container
 
 ## Configuration UI

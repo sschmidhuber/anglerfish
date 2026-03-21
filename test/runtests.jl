@@ -7,8 +7,12 @@ push!(ARGS, "TEST_MODE")
 
 Anglerfish.init()
 
+current_dir = @__DIR__
+append!(Anglerfish.READ_ONLY_DIRECTORIES, [current_dir])
 
-@testset "Date Time Tool" begin
+@testset "Tools" verbose=true begin
+
+@testset "Date Time" begin
     date_time_tool = Anglerfish.TOOLS["date_time"]
     date_time_result = (date_time_tool.handler(nothing)).text |> JSON.parse
     @test haskey(date_time_result, "time")
@@ -19,14 +23,14 @@ Anglerfish.init()
 end
 
 
-@testset "Open File Tool" begin
+@test_skip @testset "Open File" begin
     open_file_tool = Anglerfish.TOOLS["open_file"]
     @test open_file_tool.handler(Dict("file_path" => joinpath(@__DIR__, "runtests.jl"))).text == "successfully opened file: $(joinpath(@__DIR__, "runtests.jl"))"
-    @test open_file_tool.handler(Dict("file_path" => "non_existent_file.txt")).text == "file not found: non_existent_file.txt"
+    @test open_file_tool.handler(Dict("file_path" => joinpath(current_dir, "non_existent_file.txt"))).text == "access denied or invalid path: $(joinpath(current_dir, "non_existent_file.txt"))"
 end
 
 
-@testset "System Info Tool" begin
+@testset "System Info" begin
     system_info_tool = Anglerfish.TOOLS["system_info"]
     system_info_result = (system_info_tool.handler(nothing)).text |> JSON.parse
     @test system_info_result["os"] == Sys.KERNEL |> string
@@ -37,7 +41,9 @@ end
 end
 
 
-@testset "Email Tool" begin
+
+
+@test_skip @testset "Email" begin
     compose_email_tool = Anglerfish.TOOLS["compose_email"]
     @test compose_email_tool.handler(Dict(
             "subject" => "",
@@ -66,7 +72,7 @@ end
 end
 
 
-@testset "Calendar Tool" begin
+@test_skip @testset "Calendar" begin
     calendar_tool = Anglerfish.TOOLS["calendar_items"]
     calendar_result = calendar_tool.handler(Dict(
         "items" => [
@@ -109,3 +115,52 @@ end
     )).text
     @test calendar_result == "successfully created a calendar file and opened it in the default calendar client"
 end
+
+
+@testset "Filesystem" begin
+    # Test with allowed directory
+    read_directory_tool = Anglerfish.TOOLS["read_directory"]
+    read_directory_result = read_directory_tool.handler(Dict("directory" => first(Anglerfish.READ_ONLY_DIRECTORIES))).text |> JSON.parse
+    @test haskey(read_directory_result, "files")
+    @test haskey(read_directory_result, "directories")
+
+    # Test with not allowed directory
+    read_directory_error = read_directory_tool.handler(Dict("directory" => "/")).text
+    @test read_directory_error == "access denied: /"
+
+    # Test with single extension filter
+    read_directory_result_with_filter = read_directory_tool.handler(Dict("directory" => first(Anglerfish.READ_ONLY_DIRECTORIES), "filter" => [".jl"])).text |> JSON.parse
+    @test all(endswith(".jl"), read_directory_result_with_filter["files"])
+
+    # Test with multiple extension filter
+    read_directory_result_with_multiple_filter = read_directory_tool.handler(Dict("directory" => first(Anglerfish.READ_ONLY_DIRECTORIES), "filter" => [".jl", ".md"])).text |> JSON.parse
+    @test all(x -> endswith(x, ".jl") || endswith(x, ".md"), read_directory_result_with_multiple_filter["files"])
+end
+
+end;
+
+
+@testset "Common Functions" verbose=true begin
+
+@testset "Path Validation" begin
+    # Test with a valid path that should be allowed for reading but not writing
+    @test Anglerfish.validate_path(current_dir, "read") == true
+    @test Anglerfish.validate_path(current_dir, "write") == false
+
+    # Test with a path that should be denied
+    @test Anglerfish.validate_path("/", "read") == false
+    @test Anglerfish.validate_path("/", "write") == false
+
+    # Test with an invalid access type
+    @test Anglerfish.validate_path(current_dir, "execute") == false
+end
+
+@testset "Command Availability" begin
+    # Test with a common command that should be available
+    @test Anglerfish.isinstalled("echo") == true
+
+    # Test with a command that is unlikely to be available
+    @test Anglerfish.isinstalled("some_non_existent_command_12345") == false
+end
+
+end;

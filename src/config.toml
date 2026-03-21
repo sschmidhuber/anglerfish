@@ -15,3 +15,7 @@ locality_identifier = "Apt 4B"
 city = "New Haven"
 postal_code = "06510"
 country = "USA"
+
+[filesystem]
+read_only = []
+read_write = []

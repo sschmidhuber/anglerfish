@@ -73,7 +73,7 @@ function init_open_file_tool(config::Dict)
     @info "initialize open file tool"
     open_file_tool = MCPTool(
         name="open_file",
-        description="opens a file with the default application for that file type. The file path must be absolute.",
+        description="opens a file with the default application for that file type. The file path must be absolute and within the allowed directories: $(join(union(READ_ONLY_DIRECTORIES, READ_WRITE_DIRECTORIES), ", ", " or "))",
         parameters=[
             ToolParameter(
                 name = "file_path",
@@ -94,7 +94,9 @@ end
 Opens a file with the default application for that file type. The file path must be absolute.
 """
 function open_file(path)
-    if !isfile(path)
+    if !validate_path(path, "read")
+        return "access denied or invalid path: $path"
+    elseif !isfile(path)
         return "file not found: $path"
     end
 
