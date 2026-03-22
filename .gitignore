@@ -1,5 +1,6 @@
 *.jl.*.cov
 *.jl.cov
+*.info
 *.jl.mem
 *.rej
 .DS_Store

@@ -85,14 +85,117 @@ end
 push!(INIT_FUNCTIONS, init_read_directory_tool)
 
 
-# search file
+# file search
 
-function desktop_search_tool()::Uinon{String,Nothing}
+function file_search_func()::Union{Function,Nothing}
     if Sys.iswindows()
         return nothing # not implemented yet
-    elseif Sys.isapple()
-        return nothing # not implemented yet
     else
-        return "desktop_search tool is not implemented on this operating system yet"
+        if isinstalled("find")
+            return find_cmd    
+        end
+    end
+
+    return nothing
+end
+
+
+"""
+    find_cmd(keywords, directories=[], only_files=true, exclude_hidden=true)::Union{Vector{String}, String}
+
+Executes a search for files and directories matching the specified keywords within the allowed directories. Returns a vector of matching paths or an error message.
+# Arguments
+- `keywords`: A vector of keywords to search for in file and directory names.
+- `directories`: An optional vector of directories to limit the search to. If empty, searches all allowed directories.
+- `only_files`: If true, only returns files. If false, returns both files and directories.
+- `exclude_hidden`: If true, excludes hidden files and directories from the search results.
+"""
+function find_cmd(keywords, directories=[], only_files=true, exclude_hidden=true)::Union{Dict, String}
+    dirs = ifelse(isempty(directories) && all(validate_path.(directories, "read")), union(READ_ONLY_DIRECTORIES, READ_WRITE_DIRECTORIES), directories)
+    exec = ["find", dirs...]
+    if exclude_hidden
+        append!(exec, ["-name", ".*", "-prune", "-o"])
+    end
+    if only_files
+        append!(exec, ["-type", "f"])
+    end
+    if length(keywords) == 1
+        append!(exec, ["-iname", "*$(keywords[1])*"])
+    elseif length(keywords) > 1
+        append!(exec, ["(", (join(map(k -> "-iname *$(k)*", keywords), " -o ") |> split .|> String)..., ")"])
+    else
+        return "no keywords provided for search"
+    end
+    if exclude_hidden
+        append!(exec, ["-print"])
+    end
+    @debug "Executing find command: $(join(exec, " "))"
+    cmd = Cmd(exec)
+    try
+        output = read(ignorestatus(cmd), String)
+        results = split(output, "\n", keepempty=false)
+        directories = []
+        files = []
+        for result in results
+            if isdir(result)
+                push!(directories, result)
+            elseif isfile(result)
+                push!(files, result)
+            end
+        end
+
+        return Dict("files" => files, "directories" => directories)
+    catch error
+        return "error executing find command: $(error)"
     end
 end
+
+
+function init_file_search_tool(config::Dict)
+    @info "initialize file search tool"
+    search_function = file_search_func()
+    if isnothing(search_function)
+        @warn "file search tool is not available on this system, no supported search command found"
+        return        
+    end
+    file_search_tool = MCPTool(
+        name="file_search",
+        description="searches for files and directories matching the specified keywords within the allowed directories. Returns a list of matching paths.",
+        parameters=[
+            ToolParameter(
+                name = "keywords",
+                type = "array",
+                description = "a list of keywords to search for in file and directory names",
+                required = true
+            ),
+            ToolParameter(
+                name = "directories",
+                type = "array",
+                description = "an optional list of directories to limit the search to. If empty, searches all allowed directories.",
+                required = false
+            ),
+            ToolParameter(
+                name = "only_files",
+                type = "bool",
+                description = "if true, only returns files. If false, returns both files and directories. Default is true.",
+                required = false
+            )
+        ],
+        handler=params -> begin
+            try
+                result = search_function(params["keywords"], get(params, "directories", []), parse(Bool, get(params, "only_files", "true") |> lowercase))
+                if result isa String
+                    return TextContent(; type="text", text=result)
+                else
+                    return TextContent(; type="text", text=JSON.json(result))
+                end
+            catch error
+                return TextContent(; type="text", text="failed to execute file search: $(error)")
+            end
+        end
+    )
+
+    TOOLS[file_search_tool.name] = file_search_tool
+end
+
+push!(INIT_FUNCTIONS, init_file_search_tool)
