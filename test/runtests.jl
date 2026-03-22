@@ -145,7 +145,7 @@ end
             @test file_search_func !== nothing
 
             # search with no keywords provided for search
-            find_cmd_result = Anglerfish.find_cmd([], [first(Anglerfish.READ_ONLY_DIRECTORIES)], true, true)
+            find_cmd_result = Anglerfish.find_cmd([], [first(Anglerfish.READ_ONLY_DIRECTORIES)], [], true, true)
             @test find_cmd_result == "no keywords provided for search"
 
             # search with one keyword and no directories provided (should search all allowed directories)
@@ -161,6 +161,11 @@ end
             find_cmd_result_single_keyword_with_directory = Anglerfish.find_cmd(["runtests"], [current_dir])
             @test any(endswith("runtests.jl"), find_cmd_result_single_keyword_with_directory["files"])
 
+            # search with one keyword and file extension filter provided
+            find_cmd_result_single_keyword_with_filter = Anglerfish.find_cmd(["runtests"], [current_dir], [".jl"])
+            @test any(endswith("runtests.jl"), find_cmd_result_single_keyword_with_filter["files"])
+            @test all(endswith(".jl"), find_cmd_result_single_keyword_with_filter["files"])
+
             # test handler with single keyword and specific directory provided
             file_search_tool = Anglerfish.TOOLS["file_search"]
             file_search_result = file_search_tool.handler(Dict("keywords" => ["runtests"], "directories" => [current_dir], "only_files" => "true")).text |> JSON.parse
@@ -170,6 +175,11 @@ end
             file_search_result_multiple_keywords = file_search_tool.handler(Dict("keywords" => ["runtests", "non_existent_file"], "directories" => [current_dir], "only_files" => "true")).text |> JSON.parse
             @test any(endswith("runtests.jl"), file_search_result_multiple_keywords["files"])
             @test !any(endswith("non_existent_file"), file_search_result_multiple_keywords["files"])
+
+            # test handler with single keyword, specific directory, and file extension filter provided
+            file_search_result_single_keyword_with_filter = file_search_tool.handler(Dict("keywords" => ["runtests"], "directories" => [current_dir], "filter" => [".jl"], "only_files" => "true")).text |> JSON.parse
+            @test any(endswith("runtests.jl"), file_search_result_single_keyword_with_filter["files"])
+            @test all(endswith(".jl"), file_search_result_single_keyword_with_filter["files"])
         end
 end
 

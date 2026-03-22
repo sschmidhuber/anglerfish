@@ -107,10 +107,11 @@ Executes a search for files and directories matching the specified keywords with
 # Arguments
 - `keywords`: A vector of keywords to search for in file and directory names.
 - `directories`: An optional vector of directories to limit the search to. If empty, searches all allowed directories.
+- `filter`: An optional vector of file extensions to filter the results (e.g. `[".txt", ".md"]`).
 - `only_files`: If true, only returns files. If false, returns both files and directories.
 - `exclude_hidden`: If true, excludes hidden files and directories from the search results.
 """
-function find_cmd(keywords, directories=[], only_files=true, exclude_hidden=true)::Union{Dict, String}
+function find_cmd(keywords, directories=[], filter=[], only_files=true, exclude_hidden=true)::Union{Dict, String}
     dirs = ifelse(isempty(directories) && all(validate_path.(directories, "read")), union(READ_ONLY_DIRECTORIES, READ_WRITE_DIRECTORIES), directories)
     exec = ["find", dirs...]
     if exclude_hidden
@@ -139,7 +140,7 @@ function find_cmd(keywords, directories=[], only_files=true, exclude_hidden=true
         for result in results
             if isdir(result)
                 push!(directories, result)
-            elseif isfile(result)
+            elseif isfile(result) && (isempty(filter) || lowercase(splitext(result)[2]) in lowercase.(filter))
                 push!(files, result)
             end
         end
@@ -175,6 +176,12 @@ function init_file_search_tool(config::Dict)
                 required = false
             ),
             ToolParameter(
+                name = "filter",
+                type = "array",
+                description = "an optional list of file extensions to filter the results (e.g. ['.txt', '.md'])",
+                required = false
+            ),
+            ToolParameter(
                 name = "only_files",
                 type = "bool",
                 description = "if true, only returns files. If false, returns both files and directories. Default is true.",
@@ -183,7 +190,7 @@ function init_file_search_tool(config::Dict)
         ],
         handler=params -> begin
             try
-                result = search_function(params["keywords"], get(params, "directories", []), parse(Bool, get(params, "only_files", "true") |> lowercase))
+                result = search_function(params["keywords"], get(params, "directories", []), get(params, "filter", []), parse(Bool, get(params, "only_files", "true") |> lowercase))
                 if result isa String
                     return TextContent(; type="text", text=result)
                 else

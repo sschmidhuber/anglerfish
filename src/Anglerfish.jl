@@ -47,10 +47,17 @@ Load configuration and run tool initialization functions.
 """
 function init()
     config_path = joinpath(BaseDirs.CONFIG_HOME, "anglerfish", "config.toml")
+    local config
     if !isfile(config_path)
         mkpath(joinpath(BaseDirs.CONFIG_HOME, "anglerfish"))
         configure(joinpath(@__DIR__, "config.toml"), config_path)
         @info "No config file found. A default config has been created at $config_path."
+    end
+    try
+        config = TOML.parsefile(config_path)
+    catch error
+        @error "failed to parse config file at $config_path: $error"
+        exit(1)
     end
     config = TOML.parsefile(config_path)
 
