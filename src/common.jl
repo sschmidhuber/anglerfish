@@ -19,7 +19,7 @@ function validate_path(path::AbstractString, access::String)::Bool
 
     try
         for allowed in allowed_directories
-            if startswith(realpath(path), realpath(allowed))
+            if startswith(realpath(isdir(path) ? path : dirname(path)), realpath(allowed))
                 return true
             end
         end        

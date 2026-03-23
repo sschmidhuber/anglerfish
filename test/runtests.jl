@@ -8,8 +8,10 @@ push!(ARGS, "TEST_MODE")
 
 Anglerfish.init()
 
-current_dir = @__DIR__
-append!(Anglerfish.READ_ONLY_DIRECTORIES, [current_dir])
+ro_dir = joinpath(@__DIR__, "testdata", "read_only")
+rw_dir = joinpath(@__DIR__, "testdata", "read_write")
+append!(Anglerfish.READ_ONLY_DIRECTORIES, [ro_dir])
+append!(Anglerfish.READ_WRITE_DIRECTORIES, [rw_dir])
 
 @testset "Tools" verbose=true begin
 
@@ -26,8 +28,8 @@ end
 
 @test_skip @testset "Open File" begin
     open_file_tool = Anglerfish.TOOLS["open_file"]
-    @test open_file_tool.handler(Dict("file_path" => joinpath(@__DIR__, "runtests.jl"))).text == "successfully opened file: $(joinpath(@__DIR__, "runtests.jl"))"
-    @test open_file_tool.handler(Dict("file_path" => joinpath(current_dir, "non_existent_file.txt"))).text == "access denied or invalid path: $(joinpath(current_dir, "non_existent_file.txt"))"
+    @test open_file_tool.handler(Dict("file_path" => joinpath(ro_dir, "test file 1.txt"))).text == "successfully opened file: $(joinpath(ro_dir, "test file 1.txt"))"
+    @test open_file_tool.handler(Dict("file_path" => joinpath(ro_dir, "non_existent_file.txt"))).text == "file not found: $(joinpath(ro_dir, "non_existent_file.txt"))"
 end
 
 
@@ -68,7 +70,7 @@ end
             "cc" => ["albert.einstein@stanford.edu"],
             "bcc" => ["erwin.schroedinger@uniwien.at"],
             "content" => "Test Content",
-            "attachments" => [joinpath(@__DIR__, "runtests.jl")]
+            "attachments" => [joinpath(ro_dir, "Testdokument ÄÜÖ.md")]
         )).text == "successfully opened email client with precomposed email"
 end
 
@@ -131,8 +133,8 @@ end
             @test read_directory_error == "access denied: /"
 
             # Test with single extension filter
-            read_directory_result_with_filter = read_directory_tool.handler(Dict("directory" => first(Anglerfish.READ_ONLY_DIRECTORIES), "filter" => [".jl"])).text |> JSON.parse
-            @test all(endswith(".jl"), read_directory_result_with_filter["files"])
+            read_directory_result_with_filter = read_directory_tool.handler(Dict("directory" => first(Anglerfish.READ_ONLY_DIRECTORIES), "filter" => [".md"])).text |> JSON.parse
+            @test all(endswith(".md"), read_directory_result_with_filter["files"])
 
             # Test with multiple extension filter
             read_directory_result_with_multiple_filter = read_directory_tool.handler(Dict("directory" => first(Anglerfish.READ_ONLY_DIRECTORIES), "filter" => [".jl", ".md"])).text |> JSON.parse
@@ -149,37 +151,60 @@ end
             @test find_cmd_result == "no keywords provided for search"
 
             # search with one keyword and no directories provided (should search all allowed directories)
-            find_cmd_result_single_keyword = Anglerfish.find_cmd(["runtests"])
-            @test any(endswith("runtests.jl"), find_cmd_result_single_keyword["files"])
+            find_cmd_result_single_keyword = Anglerfish.find_cmd(["dokument"])
+            @test any(endswith("Testdokument ÄÜÖ.md"), find_cmd_result_single_keyword["files"])
 
             # search with multiple keywords and no directories provided (should search all allowed directories)
-            find_cmd_result_multiple_keywords = Anglerfish.find_cmd(["runtests", "non_existent_file"])
-            @test any(endswith("runtests.jl"), find_cmd_result_multiple_keywords["files"])
+            find_cmd_result_multiple_keywords = Anglerfish.find_cmd(["dokument", "non_existent_file"])
+            @test any(endswith("Testdokument ÄÜÖ.md"), find_cmd_result_multiple_keywords["files"])
             @test !any(endswith("non_existent_file"), find_cmd_result_multiple_keywords["files"])
 
             # search with one keyword and specific directory provided
-            find_cmd_result_single_keyword_with_directory = Anglerfish.find_cmd(["runtests"], [current_dir])
-            @test any(endswith("runtests.jl"), find_cmd_result_single_keyword_with_directory["files"])
+            find_cmd_result_single_keyword_with_directory = Anglerfish.find_cmd(["file 1"], [ro_dir])
+            @test any(endswith("test file 1.txt"), find_cmd_result_single_keyword_with_directory["files"])
 
             # search with one keyword and file extension filter provided
-            find_cmd_result_single_keyword_with_filter = Anglerfish.find_cmd(["runtests"], [current_dir], [".jl"])
-            @test any(endswith("runtests.jl"), find_cmd_result_single_keyword_with_filter["files"])
-            @test all(endswith(".jl"), find_cmd_result_single_keyword_with_filter["files"])
+            find_cmd_result_single_keyword_with_filter = Anglerfish.find_cmd(["file"], [ro_dir], [".txt"])
+            @test any(endswith("test file 1.txt"), find_cmd_result_single_keyword_with_filter["files"])
+            @test all(endswith(".txt"), find_cmd_result_single_keyword_with_filter["files"])
 
             # test handler with single keyword and specific directory provided
             file_search_tool = Anglerfish.TOOLS["file_search"]
-            file_search_result = file_search_tool.handler(Dict("keywords" => ["runtests"], "directories" => [current_dir], "only_files" => "true")).text |> JSON.parse
-            @test any(endswith("runtests.jl"), file_search_result["files"])
+            file_search_result = file_search_tool.handler(Dict("keywords" => ["file"], "directories" => [ro_dir], "only_files" => "true")).text |> JSON.parse
+            @test any(endswith("test file 1.txt"), file_search_result["files"])
 
             # test handler with multiple keywords and specific directory provided
-            file_search_result_multiple_keywords = file_search_tool.handler(Dict("keywords" => ["runtests", "non_existent_file"], "directories" => [current_dir], "only_files" => "true")).text |> JSON.parse
-            @test any(endswith("runtests.jl"), file_search_result_multiple_keywords["files"])
+            file_search_result_multiple_keywords = file_search_tool.handler(Dict("keywords" => ["ÄÜÖ", "non_existent_file"], "directories" => [ro_dir], "only_files" => "True")).text |> JSON.parse
+            @test any(endswith("Testdokument ÄÜÖ.md"), file_search_result_multiple_keywords["files"])
             @test !any(endswith("non_existent_file"), file_search_result_multiple_keywords["files"])
 
             # test handler with single keyword, specific directory, and file extension filter provided
-            file_search_result_single_keyword_with_filter = file_search_tool.handler(Dict("keywords" => ["runtests"], "directories" => [current_dir], "filter" => [".jl"], "only_files" => "true")).text |> JSON.parse
-            @test any(endswith("runtests.jl"), file_search_result_single_keyword_with_filter["files"])
-            @test all(endswith(".jl"), file_search_result_single_keyword_with_filter["files"])
+            file_search_result_single_keyword_with_filter = file_search_tool.handler(Dict("keywords" => ["file"], "directories" => [ro_dir], "filter" => [".txt"], "only_files" => true)).text |> JSON.parse
+            @test any(endswith("test file 1.txt"), file_search_result_single_keyword_with_filter["files"])
+            @test all(endswith(".txt"), file_search_result_single_keyword_with_filter["files"])
+        end
+
+        @testset "Move File" begin
+            tmpfile = joinpath(rw_dir, "temp_test_file.txt")
+            newtmpfile = joinpath(rw_dir, "new_temp_test_file.txt")
+            # create a temporary file to move
+            open(tmpfile, "w") do f
+                write(f, "This is a temporary file for testing the move file tool.")
+            end
+            # move the file using the move file tool
+            move_file_tool = Anglerfish.TOOLS["move_file"]
+            move_file_result = move_file_tool.handler(Dict("source" => tmpfile, "destination" => newtmpfile)).text
+            @test move_file_result == "successfully moved file from $tmpfile to $newtmpfile"
+            # check that the file was moved
+            @test !isfile(tmpfile)
+            @test isfile(newtmpfile)
+
+            # move file to a non-allowed directory (should fail)
+            move_file_result_invalid = move_file_tool.handler(Dict("source" => newtmpfile, "destination" => "/new_temp_test_file.txt")).text
+            @test move_file_result_invalid == "access denied or invalid path: /new_temp_test_file.txt"
+
+            # clean up
+            rm(newtmpfile)
         end
 end
 
@@ -190,15 +215,15 @@ end;
 
 @testset "Path Validation" begin
     # Test with a valid path that should be allowed for reading but not writing
-    @test Anglerfish.validate_path(current_dir, "read") == true
-    @test Anglerfish.validate_path(current_dir, "write") == false
+    @test Anglerfish.validate_path(ro_dir, "read") == true
+    @test Anglerfish.validate_path(ro_dir, "write") == false
 
     # Test with a path that should be denied
     @test Anglerfish.validate_path("/", "read") == false
     @test Anglerfish.validate_path("/", "write") == false
 
     # Test with an invalid access type
-    @test Anglerfish.validate_path(current_dir, "execute") == false
+    @test Anglerfish.validate_path(rw_dir, "execute") == false
 end
 
 @testset "Command Availability" begin

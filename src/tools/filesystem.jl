@@ -190,7 +190,11 @@ function init_file_search_tool(config::Dict)
         ],
         handler=params -> begin
             try
-                result = search_function(params["keywords"], get(params, "directories", []), get(params, "filter", []), parse(Bool, get(params, "only_files", "true") |> lowercase))
+                only_files = get(params, "only_files", true)
+                if only_files isa String
+                    only_files = parse(Bool, lowercase(only_files))
+                end
+                result = search_function(params["keywords"], get(params, "directories", []), get(params, "filter", []), only_files)
                 if result isa String
                     return TextContent(; type="text", text=result)
                 else
@@ -206,3 +210,58 @@ function init_file_search_tool(config::Dict)
 end
 
 push!(INIT_FUNCTIONS, init_file_search_tool)
+
+
+# move file
+
+
+"""
+    move_file(source, destination)
+
+Moves a file from one location to another. Both source and destination paths must be absolute and within the read/write directories specified in the configuration.
+"""
+function move_file(source, destination)
+    if !validate_path(source, "write")
+        return "access denied or invalid path: $source"
+    elseif !validate_path(destination, "write")
+        return "access denied or invalid path: $destination"
+    elseif !isfile(source)
+        return "source file not found: $source"
+    end
+
+    try
+        mv(source, destination; force=true)
+    catch err
+        return "failed to move file: $err"
+    end
+    
+    return "successfully moved file from $source to $destination"
+end
+
+
+function init_move_file_tool(config::Dict)
+    @info "initialize move file tool"
+    move_file_tool = MCPTool(
+        name="move_file",
+        description="moves a file from one location to another. Both source and destination paths must be absolute and within the read/write directories: $(join(READ_WRITE_DIRECTORIES, ", ", " or "))",
+        parameters=[
+            ToolParameter(
+                name = "source",
+                type = "str",
+                description = "absolute path to the file to be moved",
+                required = true
+            ),
+            ToolParameter(
+                name = "destination",
+                type = "str",
+                description = "absolute path to the destination where the file should be moved",
+                required = true
+            )
+        ],
+        handler=params -> TextContent(; type="text", text=move_file(params["source"], params["destination"]))
+    )
+    
+    TOOLS[move_file_tool.name] = move_file_tool    
+end
+
+push!(INIT_FUNCTIONS, init_move_file_tool)
