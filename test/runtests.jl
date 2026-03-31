@@ -36,15 +36,12 @@ end
 @testset "System Info" begin
     system_info_tool = Anglerfish.TOOLS["system_info"]
     system_info_result = (system_info_tool.handler(nothing)).text |> JSON.parse
-    @test system_info_result["os"] == Sys.KERNEL |> string
+    @test contains(system_info_result["os"], "Linux") || contains(system_info_result["os"], "Darwin")
     @test system_info_result["cpu"] == Sys.CPU_NAME
     @test system_info_result["architecture"] == Sys.ARCH |> string
     @test system_info_result["cores"] == Sys.CPU_THREADS
     @test haskey(system_info_result, "memory")
 end
-
-
-
 
 @test_skip @testset "Email" begin
     compose_email_tool = Anglerfish.TOOLS["compose_email"]
@@ -120,7 +117,7 @@ end
 end
 
 
-@testset "Filesystem" verbose=true begin
+    @testset "Filesystem" verbose = true begin
         @testset "Read Directory" begin
             # Test with allowed directory
             read_directory_tool = Anglerfish.TOOLS["read_directory"]
@@ -183,55 +180,66 @@ end
             @test any(endswith("test file 1.txt"), file_search_result_single_keyword_with_filter["files"])
             @test all(endswith(".txt"), file_search_result_single_keyword_with_filter["files"])
         end
+    end
 
-        @testset "Move File" begin
-            tmpfile = joinpath(rw_dir, "temp_test_file.txt")
-            newtmpfile = joinpath(rw_dir, "new_temp_test_file.txt")
-            # create a temporary file to move
-            open(tmpfile, "w") do f
-                write(f, "This is a temporary file for testing the move file tool.")
-            end
-            # move the file using the move file tool
-            move_file_tool = Anglerfish.TOOLS["move_file"]
-            move_file_result = move_file_tool.handler(Dict("source" => tmpfile, "destination" => newtmpfile)).text
-            @test move_file_result == "successfully moved file from $tmpfile to $newtmpfile"
-            # check that the file was moved
-            @test !isfile(tmpfile)
-            @test isfile(newtmpfile)
+    @testset "Shell Command Execution" begin
+        # only run shell command execution tests on Linux
+        if Sys.islinux()
+            shell_tool = Anglerfish.TOOLS["shell"]
 
-            # move file to a non-allowed directory (should fail)
-            move_file_result_invalid = move_file_tool.handler(Dict("source" => newtmpfile, "destination" => "/new_temp_test_file.txt")).text
-            @test move_file_result_invalid == "access denied or invalid path: /new_temp_test_file.txt"
+            # test background execution of a simple command
+            shell_result = shell_tool.handler(Dict("command" => "echo Hello World", "foreground" => false)).text
+            @test shell_result == "Hello World"
 
-            # clean up
-            rm(newtmpfile)
+            # test foreground execution of a simple command (this will open a terminal window, so we can't easily automate checking the result, but we can at least check that it doesn't return an error)
+            shell_result_foreground = shell_tool.handler(Dict("command" => "echo Hello Foreground; sleep 2", "foreground" => "True")).text
+            @test startswith(shell_result_foreground, "command executed in foreground with terminal:")
+
+            # test execution with working directory specified
+            shell_result_with_wd = shell_tool.handler(Dict("command" => "pwd", "working_directory" => ro_dir, "foreground" => false)).text
+            @test strip(shell_result_with_wd) == ro_dir
+
+            # test execution with invalid working directory specified (should default to home or first allowed directory)
+            shell_result_with_invalid_wd = shell_tool.handler(Dict("command" => "pwd", "working_directory" => "/invalid/directory", "foreground" => false)).text
+            @test strip(shell_result_with_invalid_wd) == homedir() || strip(shell_result_with_invalid_wd) == first(Anglerfish.READ_ONLY_DIRECTORIES)
         end
-end
+    end
 
 end;
 
 
-@testset "Common Functions" verbose=true begin
+@testset "Common Functions" verbose = true begin
 
-@testset "Path Validation" begin
-    # Test with a valid path that should be allowed for reading but not writing
-    @test Anglerfish.validate_path(ro_dir, "read") == true
-    @test Anglerfish.validate_path(ro_dir, "write") == false
+    @testset "Path Validation" begin
+        # Test with a valid path that should be allowed for reading but not writing
+        @test Anglerfish.isvalidpath(ro_dir, "read") == true
+        @test Anglerfish.isvalidpath(ro_dir, "write") == false
 
-    # Test with a path that should be denied
-    @test Anglerfish.validate_path("/", "read") == false
-    @test Anglerfish.validate_path("/", "write") == false
+        # Test with a path that should be denied
+        @test Anglerfish.isvalidpath("/", "read") == false
+        @test Anglerfish.isvalidpath("/", "write") == false
 
-    # Test with an invalid access type
-    @test Anglerfish.validate_path(rw_dir, "execute") == false
-end
+        # Test with an invalid access type
+        @test Anglerfish.isvalidpath(rw_dir, "execute") == false
+    end
 
-@testset "Command Availability" begin
-    # Test with a common command that should be available
-    @test Anglerfish.isinstalled("echo") == true
+    @testset "Command Availability" begin
+        # Test with a common command that should be available
+        @test Anglerfish.isinstalled("echo") == true
 
-    # Test with a command that is unlikely to be available
-    @test Anglerfish.isinstalled("some_non_existent_command_12345") == false
-end
+        # Test with a command that is unlikely to be available
+        @test Anglerfish.isinstalled("some_non_existent_command_12345") == false
+    end
+
+    @testset "Tryparse Bool" begin
+        @test Anglerfish.parse_bool("true", false) == true
+        @test Anglerfish.parse_bool("True", false) == true
+        @test Anglerfish.parse_bool("false", false) == false
+        @test Anglerfish.parse_bool("False", false) == false
+        @test Anglerfish.parse_bool(true, false) == true
+        @test Anglerfish.parse_bool(false, true) == false
+        @test Anglerfish.parse_bool(nothing, true) == true
+        @test Anglerfish.parse_bool("not_a_bool", false) == false
+    end
 
 end;

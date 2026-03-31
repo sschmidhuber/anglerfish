@@ -19,3 +19,6 @@ country = "USA"
 [filesystem]
 read_only = []
 read_write = []
+
+[applications]
+terminal = "konsole"

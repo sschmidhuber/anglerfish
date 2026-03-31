@@ -2,6 +2,9 @@ module Anglerfish
 
 using BaseDirs
 using Dates
+using FileIO
+using ImageTransformations
+using MIMEs
 using JSON
 using ModelContextProtocol
 using TimeZones
@@ -18,6 +21,8 @@ include("tools/basic.jl")
 include("tools/email.jl")
 include("tools/calendar.jl")
 include("tools/filesystem.jl")
+include("tools/shell.jl")
+include("tools/io.jl")
 
 export main
 

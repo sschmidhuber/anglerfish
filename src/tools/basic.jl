@@ -46,20 +46,42 @@ push!(INIT_FUNCTIONS, init_user_data_tool)
 
 # system info
 
+function system_info()
+    dict = Dict(
+        "cpu" => Sys.CPU_NAME,
+        "architecture" => Sys.ARCH, 
+        "cores" => Sys.CPU_THREADS,
+        "memory" => "$(ceil(Int, Sys.total_memory() / 1_073_741_824)) GiB"
+    )
+
+    if Sys.islinux()        
+        osrelease = readchomp("/etc/os-release")
+        for line in split(osrelease, "\n")
+            if startswith(line, "PRETTY_NAME=")
+                dict["os"] = line[14:end-1]
+                break
+            end
+        end
+    elseif Sys.isapple()
+        dict["os"] = "macOS"
+    elseif Sys.iswindows()
+        dict["os"] = "Windows"
+    elseif Sys.isbsd()
+        dict["os"] = "BSD"
+    else
+        dict["os"] = "unknown"
+    end
+
+    return dict
+end
+
 function init_system_info_tool(config::Dict)
     @info "initialize system info tool"
     system_info_tool = MCPTool(
         name="system_info",
         description="returns a set of data about the system, including os, cpu and memory",
         parameters=[],
-        handler=params -> TextContent(; type="text", text=Dict(
-            "os" => Sys.KERNEL |> string,
-            "cpu" => Sys.CPU_NAME,
-            "architecture" => Sys.ARCH, 
-            "cores" => Sys.CPU_THREADS,
-            "memory" => "$(ceil(Int, Sys.total_memory() / 1_073_741_824)) GiB"
-            ) |> JSON.json
-        )
+        handler=params -> TextContent(; type="text", text=system_info() |> JSON.json)
     )
     TOOLS[system_info_tool.name] = system_info_tool
 end
@@ -94,7 +116,7 @@ end
 Opens a file with the default application for that file type. The file path must be absolute.
 """
 function open_file(path)
-    if !validate_path(path, "read")
+    if !isvalidpath(path, "read")
         return "access denied or invalid path: $path"
     elseif !isfile(path)
         return "file not found: $path"
@@ -116,3 +138,10 @@ function open_file(path)
 end
 
 push!(INIT_FUNCTIONS, init_open_file_tool)
+
+
+#=
+bwrap --ro-bind /bin /bin --dev /dev --proc /proc --ro-bind /run /run --ro-bind-try /lib
+64 /lib64  --ro-bind /tmp /tmp --ro-bind /var /var --ro-bind /etc /etc --ro-bind /lib /lib --ro-bind /sys /sys --ro-bind /usr /u
+sr bash -c 'ls'
+=#

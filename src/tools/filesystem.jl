@@ -1,3 +1,4 @@
+
 # read directory
 
 """
@@ -13,7 +14,7 @@ function read_directory(directory, filter=[])
     files = []
     directories= []
     
-    if !validate_path(directory, "read")
+    if !isvalidpath(directory, "read")
         return "access denied: $directory"
     end
 
@@ -84,7 +85,6 @@ end
 
 push!(INIT_FUNCTIONS, init_read_directory_tool)
 
-
 # file search
 
 function file_search_func()::Union{Function,Nothing}
@@ -112,7 +112,7 @@ Executes a search for files and directories matching the specified keywords with
 - `exclude_hidden`: If true, excludes hidden files and directories from the search results.
 """
 function find_cmd(keywords, directories=[], filter=[], only_files=true, exclude_hidden=true)::Union{Dict, String}
-    dirs = ifelse(isempty(directories) && all(validate_path.(directories, "read")), union(READ_ONLY_DIRECTORIES, READ_WRITE_DIRECTORIES), directories)
+    dirs = ifelse(isempty(directories) && all(isvalidpath.(directories, "read")), union(READ_ONLY_DIRECTORIES, READ_WRITE_DIRECTORIES), directories)
     exec = ["find", dirs...]
     if exclude_hidden
         append!(exec, ["-name", ".*", "-prune", "-o"])
@@ -190,10 +190,7 @@ function init_file_search_tool(config::Dict)
         ],
         handler=params -> begin
             try
-                only_files = get(params, "only_files", true)
-                if only_files isa String
-                    only_files = parse(Bool, lowercase(only_files))
-                end
+                only_files = parse_bool(get(params, "only_files", false), false)
                 result = search_function(params["keywords"], get(params, "directories", []), get(params, "filter", []), only_files)
                 if result isa String
                     return TextContent(; type="text", text=result)
@@ -210,58 +207,3 @@ function init_file_search_tool(config::Dict)
 end
 
 push!(INIT_FUNCTIONS, init_file_search_tool)
-
-
-# move file
-
-
-"""
-    move_file(source, destination)
-
-Moves a file from one location to another. Both source and destination paths must be absolute and within the read/write directories specified in the configuration.
-"""
-function move_file(source, destination)
-    if !validate_path(source, "write")
-        return "access denied or invalid path: $source"
-    elseif !validate_path(destination, "write")
-        return "access denied or invalid path: $destination"
-    elseif !isfile(source)
-        return "source file not found: $source"
-    end
-
-    try
-        mv(source, destination; force=true)
-    catch err
-        return "failed to move file: $err"
-    end
-    
-    return "successfully moved file from $source to $destination"
-end
-
-
-function init_move_file_tool(config::Dict)
-    @info "initialize move file tool"
-    move_file_tool = MCPTool(
-        name="move_file",
-        description="moves a file from one location to another. Both source and destination paths must be absolute and within the read/write directories: $(join(READ_WRITE_DIRECTORIES, ", ", " or "))",
-        parameters=[
-            ToolParameter(
-                name = "source",
-                type = "str",
-                description = "absolute path to the file to be moved",
-                required = true
-            ),
-            ToolParameter(
-                name = "destination",
-                type = "str",
-                description = "absolute path to the destination where the file should be moved",
-                required = true
-            )
-        ],
-        handler=params -> TextContent(; type="text", text=move_file(params["source"], params["destination"]))
-    )
-    
-    TOOLS[move_file_tool.name] = move_file_tool    
-end
-
-push!(INIT_FUNCTIONS, init_move_file_tool)

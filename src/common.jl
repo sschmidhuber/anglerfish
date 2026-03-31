@@ -1,5 +1,5 @@
 """
-    validate_path(path::AbstractString, access::String)
+    isvalidpath(path::AbstractString, access::String)::Bool
 
 Validates that the given path is within the allowed directories for the specified access type ("read" or "write").
 
@@ -7,7 +7,7 @@ Arguments:
 - `path`: The file or directory path to validate.
 - `access`: The type of access being requested, either "read" or "write".
 """
-function validate_path(path::AbstractString, access::String)::Bool
+function isvalidpath(path::AbstractString, access::String)::Bool
     if access == "read"
         allowed_directories = union(READ_ONLY_DIRECTORIES, READ_WRITE_DIRECTORIES)
     elseif access == "write"
@@ -47,5 +47,28 @@ function isinstalled(cmd::AbstractString)::Bool
         return true
     catch
         return false
+    end
+end
+
+
+"""
+    parse_bool(input::Union{Nothing,String,Bool}, default::Bool)::Bool
+
+Parses a boolean value from the input. If the input is nothing, returns the default value. If the input is already a Bool, returns it. If the input is a string, attempts to parse it as a Bool (case-insensitive). If parsing fails, returns the default value. For any other input types, returns the default value.
+
+Arguments:
+- `input`: The value to parse as a Bool.
+- `default`: The default Bool value to return if parsing fails or input is nothing.
+"""
+function parse_bool(input::Union{Nothing,String,Bool}, default::Bool)::Bool
+    if isnothing(input)
+        return default
+    elseif input isa Bool
+        return input
+    elseif input isa AbstractString
+        res = tryparse(Bool, lowercase(input))
+        return isnothing(res) ? default : res
+    else
+        return default
     end
 end
