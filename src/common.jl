@@ -72,3 +72,29 @@ function parse_bool(input::Union{Nothing,String,Bool}, default::Bool)::Bool
         return default
     end
 end
+
+
+"""
+    downscale_image(path::AbstractString, max_image_dimension=1024)::Vector{UInt8}
+
+Loads an image from the specified path and downscales it if its dimensions exceed the specified maximum. The downscaled image is returned as a vector of bytes.
+If the image is already within the maximum dimensions, it is returned as-is.
+"""
+function downscale_image(path::AbstractString, max_image_dimension=1024)::Vector{UInt8}
+    img = FileIO.load(path)
+    h, w = size(img)
+
+    if w <= max_image_dimension && h <= max_image_dimension
+        return read(path)
+    end
+
+    scale = min(max_image_dimension / w, max_image_dimension / h)
+    new_w = round(Int, w * scale)
+    new_h = round(Int, h * scale)
+    resized = imresize(img, (new_h, new_w))
+
+    fmt = typeof(FileIO.query(path)).parameters[1]
+    io = IOBuffer()
+    FileIO.save(FileIO.Stream{fmt}(io), resized)
+    return take!(io)
+end

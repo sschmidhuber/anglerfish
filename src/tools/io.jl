@@ -1,31 +1,38 @@
+
+const PDFTOTEXT_INSTALLED = isinstalled("pdftotext")
+const PANDOC_INSTALLED = isinstalled("pandoc")
+
 # read
 
-const MAX_IMAGE_DIMENSION = 1024
-
 
 """
-    downscale_image(path, mime)
+    pdftotext(path)::TextContent
 
-Returns image data (as `Vector{UInt8}`) for the given image file. If either dimension
-exceeds `MAX_IMAGE_DIMENSION`, the image is resized while preserving the aspect ratio.
+Extracts text from a PDF file at the specified path using the pdftotext command-line tool. Returns a TextContent object containing the extracted text. Throws an error if pdftotext is not installed or if text extraction fails.
 """
-function downscale_image(path::AbstractString, mime::MIME)::Vector{UInt8}
-    img = FileIO.load(path)
-    h, w = size(img)
-
-    if w <= MAX_IMAGE_DIMENSION && h <= MAX_IMAGE_DIMENSION
-        return read(path)
+function pdftotext(path)::TextContent
+    if !PDFTOTEXT_INSTALLED
+        throw("pdftotext is not installed on this system")
     end
 
-    scale = min(MAX_IMAGE_DIMENSION / w, MAX_IMAGE_DIMENSION / h)
-    new_w = round(Int, w * scale)
-    new_h = round(Int, h * scale)
-    resized = imresize(img, (new_h, new_w))
+    exec = ["pdftotext", "-layout", path, "-"]
+    try
+        output = readchomp(pipeline(Cmd(exec), stderr=devnull))
+        return TextContent(; type="text", text=output)
+    catch error
+        throw("failed to extract text from PDF: $error")
+    end
+end
 
-    fmt = typeof(FileIO.query(path)).parameters[1]
-    io = IOBuffer()
-    FileIO.save(FileIO.Stream{fmt}(io), resized)
-    return take!(io)
+
+function convert2md(path)::TextContent
+    if !PANDOC_INSTALLED
+        throw("pandoc is not installed on this system")
+    end
+
+    inpu
+
+    exec = ["pandoc", path, "-f", "html", "-t", "markdown"]
 end
 
 
@@ -48,10 +55,16 @@ function read_file(path::AbstractString)::Union{TextContent,ImageContent,String}
         elseif string(mime)[1:5] == "image"
             data = downscale_image(path, mime)
             return ImageContent(; type="image", data=data, mime_type=string(mime))
+        elseif mime == MIME("application/pdf")
+            if PDFTOTEXT_INSTALLED
+                return pdftotext(path)
+            else
+                return "file type: $mime is not supported, because of missing dependency pdftotext. Please install poppler-utils to enable PDF text extraction."
+            end
         else
             return "file type: $mime is not supported for reading"
             # TODO: read more types
-        end        
+        end
     catch err
         return "failed to read file: $err"
     end
@@ -62,7 +75,7 @@ function init_read_file_tool(config::Dict)
     @info "initialize read file tool"
     read_file_tool = MCPTool(
         name="read_file",
-        description="reads the content of a file at the specified path. The file must be within the allowed directories ($(join(union(READ_ONLY_DIRECTORIES, READ_WRITE_DIRECTORIES), ", ", " and "))) and of a supported type (text or image). Returns a Content object containing the file data or an error message if the file cannot be read.",
+        description="reads the content of a file at the specified path. The file must be within the allowed directories ($(join(union(READ_ONLY_DIRECTORIES, READ_WRITE_DIRECTORIES), ", ", " and "))) and of a supported type (text, image od PDF). Returns a Content object containing the file data or an error message if the file cannot be read.",
         parameters=[
             ToolParameter(
                 name = "path",
