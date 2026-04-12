@@ -52,29 +52,33 @@ function ics_timestamp(dt::DateTime)
 end
 
 function ics_component(event::Event)
-    component = "BEGIN:VEVENT\nUID:$(string(event.uid))\nSUMMARY:$(event.title)\n"
-    !isnothing(event.description) && (component *= "DESCRIPTION:$(event.description)\n")
-    !isnothing(event.location) && (component *= "LOCATION:$(event.location)\n")
-    component *= "DTSTAMP:$(ics_timestamp(event.created_timestamp))\n"
-    component *= "DTSTART;$(ics_time(event.start_time))\n"
+    component = "BEGIN:VEVENT\r\nUID:$(string(event.uid))\r\nSUMMARY:$(event.title)\r\n"
+    (!isnothing(event.description) && !isempty(event.description)) && (component *= "DESCRIPTION:$(event.description)\r\n")
+    (!isnothing(event.location) && !isempty(event.location)) && (component *= "LOCATION:$(event.location)\r\n")
+    component *= "DTSTAMP:$(ics_timestamp(event.created_timestamp))\r\n"
+    component *= "DTSTART;$(ics_time(event.start_time))\r\n"
     if event.start_time isa Date
-        component *= "DTEND;$(ics_time(event.start_time + Day(1)))\n"
+        component *= "DTEND;$(ics_time(event.start_time + Day(1)))\r\n"
     elseif isnothing(event.end_time)
-        component *= "DTEND;$(ics_time(event.start_time + Hour(1)))\n"
+        component *= "DTEND;$(ics_time(event.start_time + Hour(1)))\r\n"
     else
-        component *= "DTEND;$(ics_time(event.end_time))\n"
+        component *= "DTEND;$(ics_time(event.end_time))\r\n"
     end
-    !isnothing(event.url) && (component *= "URL:$(event.url)\n")
+    !isnothing(event.url) && (component *= "URL:$(event.url)\r\n")
     component *= "END:VEVENT"
 end
 
 function ics_component(todo::Todo)
-    component = "BEGIN:VTODO\nUID:$(string(todo.uid))\nSUMMARY:$(todo.title)\n"
-    !isnothing(todo.description) && (component *= "DESCRIPTION:$(todo.description)\n")
-    !isnothing(todo.location) && (component *= "LOCATION:$(todo.location)\n")
-    component *= "DTSTAMP:$(ics_timestamp(todo.created_timestamp))\n"
-    !isnothing(todo.start_time) && (component *= "DTSTART;$(ics_time(todo.start_time))\n")
-    !isnothing(todo.due_time) && (component *= "DUE;$(ics_time(todo.due_time))\n")
+    component = "BEGIN:VTODO\r\nUID:$(string(todo.uid))\r\nSUMMARY:$(todo.title)\r\n"
+    if !isnothing(todo.description) && !isempty(todo.description)
+        component *= "DESCRIPTION:$(todo.description)\r\n"
+    end
+    if !isnothing(todo.location) && !isempty(todo.location)
+        component *= "LOCATION:$(todo.location)\r\n"
+    end
+    component *= "DTSTAMP:$(ics_timestamp(todo.created_timestamp))\r\n"
+    !isnothing(todo.start_time) && (component *= "DTSTART;$(ics_time(todo.start_time))\r\n")
+    !isnothing(todo.due_time) && (component *= "DUE;$(ics_time(todo.due_time))\r\n")
     if !isnothing(todo.priority)
         if todo.priority == "high"
             p = 1
@@ -85,22 +89,22 @@ function ics_component(todo::Todo)
         else
             p = 5
         end
-        component *= "PRIORITY:$p\n"
+        component *= "PRIORITY:$p\r\n"
     end
-    !isnothing(todo.url) && (component *= "URL:$(todo.url)\n")
+    !isnothing(todo.url) && (component *= "URL:$(todo.url)\r\n")
     component *= "END:VTODO"
 end
 
 function ics_calendar(calendar::Calendar)
-    ics = "BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//Anglerfish//NONSGML / icalendar //EN\n"
+    ics = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Anglerfish//NONSGML / icalendar //EN\r\n"
     components = map(item -> ics_component(item), calendar.items)
-    ics *= join(components, "\n")
-    ics *= "\nEND:VCALENDAR"
+    ics *= join(components, "\r\n")
+    ics *= "\r\nEND:VCALENDAR\r\n"
 end
 
 
 function init_calendar_tool(cofnig::Dict)
-    @info "initialize calendar tools"
+    @info "initialize calendar tool"
     calendar_tool = MCPTool(
         name="calendar_items",
         description="Create one or multiple calendar items (events or todos). The calendar entries are not actually created, but are opened in the users calendar client to review and import.",
@@ -180,11 +184,14 @@ Expects an array of calendar items, where each item is a dictionary with the fol
 function create_calendar_items(params)
     items = map(params) do item
         if item["type"] == "event"
-            start_time = tryparse(DateTime, item["start"], dateformat"yyyy-mm-ddTHH:MM:SS")
-            end_time = tryparse(DateTime, get(item, "end", ""), dateformat"yyyy-mm-ddTHH:MM:SS") 
-            if isnothing(start_time)
+            if length(item["start"]) == 10
                 start_time = tryparse(Date, item["start"], dateformat"yyyy-mm-dd")
-                end_time = tryparse(DateTime, get(item, "end", ""), dateformat"yyyy-mm-dd")              
+                end_time = tryparse(Date, get(item, "end", ""), dateformat"yyyy-mm-dd") 
+            elseif length(item["start"]) == 19
+                start_time = tryparse(DateTime, item["start"], dateformat"yyyy-mm-ddTHH:MM:SS")
+                end_time = tryparse(DateTime, get(item, "end", ""), dateformat"yyyy-mm-ddTHH:MM:SS") 
+                else
+                throw(ErrorException("Failed to create calendar items: invalid start time format for event item. start time should be in ISO 8601 format, either as a full datetime (e.g., 2024-01-01T10:00:00) or just a date for all day events (e.g., 2024-01-01)."))
             end
             if isnothing(start_time)
                 throw(ErrorException("Failed to create calendar items: invalid start time format for event item. start time should be in ISO 8601 format, either as a full datetime (e.g., 2024-01-01T10:00:00) or just a date for all day events (e.g., 2024-01-01)."))
