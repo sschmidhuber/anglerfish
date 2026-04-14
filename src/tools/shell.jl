@@ -86,6 +86,7 @@ function list_of_commands()
     isinstalled("bzip2") && push!(cmds, "bzip2")
     isinstalled("7z") && push!(cmds, "7z (p7zip)")
     isinstalled("pandoc") && push!(cmds, "pandoc")
+    isinstalled("jq") && push!(cmds, "jq")
 end
 
 
@@ -112,14 +113,14 @@ function init_shell_tool(config::Dict)
                 required = false
             ),
             ToolParameter(
-                name = "foreground",
+                name = "open_terminal",
                 type = "bool",
-                description = "if true, the command is executed in the foreground this can be used if user interaction is required or terminal output should be visible to the user. If false (default), the command is executed in the background and the output is returned by the tool call. In that case the user can't see the terminal wiondow.",
+                description = "if true, the command is executed in a terminal application (e.g. xterm) this can be used if user interaction is required or terminal output should be visible to the user. If false (default), the command is executed directly and the output is returned by the tool call. In that case the user can't see the terminal wiondow.",
                 required = false
             )
         ],
         handler=params -> begin
-            res = execute_bash(params["command"], get(params, "working_directory", ""), config["applications"]["terminal"], parse_bool(get(params, "foreground", false), false))
+            res = execute_bash(params["command"], get(params, "working_directory", ""), config["applications"]["terminal"], parse_bool(get(params, "open_terminal", false), false))
             return TextContent(; type="text", text=res)
         end
     )

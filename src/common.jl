@@ -19,6 +19,9 @@ function isvalidpath(path::AbstractString, access::String)::Bool
 
     try
         for allowed in allowed_directories
+            if !isdir(dirname(path))
+                return false
+            end
             if startswith(realpath(isdir(path) ? path : dirname(path)), realpath(allowed))
                 return true
             end

@@ -3,6 +3,7 @@ include(joinpath(@__DIR__, "..", "src", "Anglerfish.jl"))
 
 using Test
 using JSON
+using ModelContextProtocol
 
 push!(ARGS, "TEST_MODE")
 
@@ -117,7 +118,7 @@ end
 end
 
 
-    @testset "Filesystem" verbose = true begin
+    @testset "Filesystem" verbose = false begin
         @testset "Read Directory" begin
             # Test with allowed directory
             read_directory_tool = Anglerfish.TOOLS["read_directory"]
@@ -188,15 +189,15 @@ end
             shell_tool = Anglerfish.TOOLS["shell"]
 
             # test background execution of a simple command
-            shell_result = shell_tool.handler(Dict("command" => "echo Hello World", "foreground" => false)).text
+            shell_result = shell_tool.handler(Dict("command" => "echo Hello World", "open_terminal" => false)).text
             @test shell_result == "Hello World"
 
             # test foreground execution of a simple command (this will open a terminal window, so we can't easily automate checking the result, but we can at least check that it doesn't return an error)
-            shell_result_foreground = shell_tool.handler(Dict("command" => "echo Hello Foreground; sleep 2", "foreground" => "True")).text
+            shell_result_foreground = shell_tool.handler(Dict("command" => "echo Hello Foreground; sleep 2", "open_terminal" => "True")).text
             @test startswith(shell_result_foreground, "command executed in foreground with terminal:")
 
             # test execution with working directory specified
-            shell_result_with_wd = shell_tool.handler(Dict("command" => "pwd", "working_directory" => ro_dir, "foreground" => false)).text
+            shell_result_with_wd = shell_tool.handler(Dict("command" => "pwd", "working_directory" => ro_dir, "open_terminal" => false)).text
             @test strip(shell_result_with_wd) == ro_dir
 
             # test execution with invalid working directory specified (should default to home or first allowed directory)
@@ -205,6 +206,61 @@ end
         end
     end
 
+    @testset "IO" begin
+        @testset "Read File" begin
+            read_file_tool = Anglerfish.TOOLS["read_file"]
+
+            # test reading a text file
+            read_file_result_text = read_file_tool.handler(Dict("path" => joinpath(ro_dir, "test file 1.txt"))).text
+            @test read_file_result_text == "Test file 1\n"
+
+            # test reading an image file (this will just check that it returns an ImageContent object with the correct mime type, since we can't easily automate checking the actual image data)
+            read_file_result_image = read_file_tool.handler(Dict("path" => joinpath(ro_dir, "Julia_prog_language.png")))
+            @test read_file_result_image isa ImageContent
+            @test read_file_result_image.mime_type == "image/png"
+
+            # test reading a non-existent file
+            read_file_result_non_existent = read_file_tool.handler(Dict("path" => joinpath(ro_dir, "non_existent_file.txt"))).text
+            @test startswith(read_file_result_non_existent, "file not found:")
+
+            # test reading a file with unsupported type (assuming .exe is not supported)
+            read_file_result_unsupported = read_file_tool.handler(Dict("path" => joinpath(ro_dir, "application.deb"))).text
+            @test startswith(read_file_result_unsupported, "file type:")
+        end
+
+        @testset "Write File" begin
+            write_file_tool = Anglerfish.TOOLS["write_file"]
+
+            # test writing to a file in a read-write directory
+            write_file_result = write_file_tool.handler(Dict("path" => joinpath(rw_dir, "test_write.txt"), "content" => "This is a test.")).text
+            @test write_file_result == "file written successfully to: $(joinpath(rw_dir, "test_write.txt"))"
+            @test read(joinpath(rw_dir, "test_write.txt"), String) == "This is a test."
+
+            # test writing to a file in a read-only directory (should return an error)
+            write_file_result_read_only = write_file_tool.handler(Dict("path" => joinpath(ro_dir, "test_write.txt"), "content" => "This should fail.")).text
+            @test startswith(write_file_result_read_only, "access denied or invalid path:")
+
+            # test writing to a file with an invalid path (should return an error)
+            write_file_result_invalid_path = write_file_tool.handler(Dict("path" => "/invalid/directory/test_write.txt", "content" => "This should also fail.")).text
+            @test startswith(write_file_result_invalid_path, "access denied or invalid path:")
+
+            # test writing raw content by creating a julia file and checking that it can be executed
+            write_file_result_raw = write_file_tool.handler(Dict("path" => joinpath(rw_dir, "test_script.jl"), "content" => "println(\"Hello from test script\")", "raw" => true)).text
+            @test write_file_result_raw == "file written successfully to: $(joinpath(rw_dir, "test_script.jl"))"
+            script_output = readchomp(`julia $(joinpath(rw_dir, "test_script.jl"))`)
+            @test script_output == "Hello from test script"
+
+            # create PDF file
+            write_file_result_pdf = write_file_tool.handler(Dict("path" => joinpath(rw_dir, "test.pdf"), "content" => "# Test PDF\n\nThis is a test PDF file. ☀️", "raw" => false)).text
+            @test write_file_result_pdf == "file written successfully to: $(joinpath(rw_dir, "test.pdf"))"
+            @test isfile(joinpath(rw_dir, "test.pdf"))
+
+            # clean up test files
+            rm(joinpath(rw_dir, "test_write.txt"))
+            rm(joinpath(rw_dir, "test_script.jl"))
+            rm(joinpath(rw_dir, "test.pdf"))
+        end
+    end
 end;
 
 
