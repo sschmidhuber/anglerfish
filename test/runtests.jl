@@ -189,20 +189,29 @@ end
             shell_tool = Anglerfish.TOOLS["shell"]
 
             # test background execution of a simple command
-            shell_result = shell_tool.handler(Dict("command" => "echo Hello World", "open_terminal" => false)).text
-            @test shell_result == "Hello World"
+            shell_result = shell_tool.handler(Dict("command" => "echo Hello World", "open_terminal" => false)).text |> JSON.parse
+            @test shell_result["stdout"] == "Hello World"
+            @test shell_result["stderr"] == ""
+            @test shell_result["exitcode"] == 0
+
+            # test background execution of a command that produces an error
+            shell_result_error = shell_tool.handler(Dict("command" => "ls --invalidargument", "open_terminal" => false)).text |> JSON.parse
+            println(shell_result_error)
+            @test shell_result_error["stdout"] == ""
+            @test contains(shell_result_error["stderr"], "--invalidargument")
+            @test shell_result_error["exitcode"] != 0
 
             # test foreground execution of a simple command (this will open a terminal window, so we can't easily automate checking the result, but we can at least check that it doesn't return an error)
             shell_result_foreground = shell_tool.handler(Dict("command" => "echo Hello Foreground; sleep 2", "open_terminal" => "True")).text
-            @test startswith(shell_result_foreground, "command executed in foreground with terminal:")
+            @test startswith(shell_result_foreground, "command executed in terminal")
 
             # test execution with working directory specified
-            shell_result_with_wd = shell_tool.handler(Dict("command" => "pwd", "working_directory" => ro_dir, "open_terminal" => false)).text
-            @test strip(shell_result_with_wd) == ro_dir
+            shell_result_with_wd = shell_tool.handler(Dict("command" => "pwd", "working_directory" => ro_dir, "open_terminal" => false)).text |> JSON.parse
+            @test shell_result_with_wd["stdout"] == ro_dir
 
             # test execution with invalid working directory specified (should default to home or first allowed directory)
-            shell_result_with_invalid_wd = shell_tool.handler(Dict("command" => "pwd", "working_directory" => "/invalid/directory", "foreground" => false)).text
-            @test strip(shell_result_with_invalid_wd) == homedir() || strip(shell_result_with_invalid_wd) == first(Anglerfish.READ_ONLY_DIRECTORIES)
+            shell_result_with_invalid_wd = shell_tool.handler(Dict("command" => "pwd", "working_directory" => "/invalid/directory")).text |> JSON.parse
+            @test shell_result_with_invalid_wd["stdout"] == homedir()
         end
     end
 
@@ -259,6 +268,57 @@ end
             rm(joinpath(rw_dir, "test_write.txt"))
             rm(joinpath(rw_dir, "test_script.jl"))
             rm(joinpath(rw_dir, "test.pdf"))
+        end
+    end
+
+
+    @testset "Analytics" begin
+        plotting_tool = Anglerfish.TOOLS["gnuplot"]
+
+        # test plotting from CSV data file, creating a PNG output, and checking that the output file is created successfully. Since we can't easily automate checking the actual plot output, we'll just check that gnuplot executes without error and creates the output file.
+        datafile = joinpath(ro_dir, "test_datafile.csv")
+        gnuplot_csv_script = """
+        set terminal pngcairo
+        set output '$(joinpath(rw_dir, "test_plot.png"))'
+        set datafile separator ","
+        plot '$datafile' using 1:2 with lines title 'Column 1', '$datafile' using 1:3 with lines title 'Column 2'
+        """        
+        gnuplot_csv_result = plotting_tool.handler(Dict("script" => gnuplot_csv_script, "working_directory" => ro_dir)).text
+        @test contains(gnuplot_csv_result, "gnuplot executed successfully")
+
+        incorrect_gnuplot_script = """set terminal web size 1200,600 enhanced font 'Arial,14'
+        set output '/home/stefan/Downloads/open_llm_overall_score_bar.png'
+
+        # Title for the plot
+        set title "Top Open-Weight LLMs: Overall Benchmark Score Comparison" \
+            font "Arial Bold,20" textcolor "black"
+
+        # Y-axis formatting
+        set yrange [0:100]
+        set ytics nomirror format "%.1f"
+        set ylabel "Score / Capability Index" font "Arial,14"
+
+        # X-axis labels rotated for better readability
+        set xtics rotate by -45 offset 0,-20 textcolor "black"
+        set xlabel "Model" font "Arial,14"
+
+        # Enable legend
+        set key outside right top box
+
+        # Bar styling
+        set style fill solid
+        set bar width 0.85
+
+        # Data plotting (manual since we have tab-separated data)
+        plot "plot_overall_scores.txt" using (\$0+1):2:(stringcolumn(3)) \
+            with boxes title "Model Scores" lc rgbpalette notitle, \
+             "" using 0:0 with emptychars"""
+        gnuplot_incorrect_result = plotting_tool.handler(Dict("script" => incorrect_gnuplot_script, "working_directory" => ro_dir)).text
+        @test contains(gnuplot_incorrect_result, "line 21: undefined variable: width")
+
+        # clean up test plot file if it was created
+        if isfile(joinpath(rw_dir, "test_plot.png"))
+            rm(joinpath(rw_dir, "test_plot.png"))
         end
     end
 end;

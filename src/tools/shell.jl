@@ -1,9 +1,10 @@
 # shell
 
 """
-    execute_bash(command::String, wd::String, terminal::String, foreground=false, isolated=true)
+    execute_bash(command::String, wd::String, terminal::String, foreground=false, isolated=true)::TextContent
 
-Executes a bash command in an isolated environment using bubblewrap (bwrap). The command is executed with limited access to the filesystem and system resources based on the allowed directories configured for Anglerfish.
+Executes a bash command in an isolated environment using bubblewrap (bwrap). The command is executed with limited access
+to the filesystem and system resources based on the allowed directories configured for Anglerfish.
 
 Arguments:
 - `command`: The bash command to execute.
@@ -12,15 +13,19 @@ Arguments:
 - `foreground`: If true, the command is executed in the foreground with the specified terminal. If false, the command is executed in the background and the output is returned as text. Default is false.
 - `isolated`: If true, the command is executed in an isolated environment using bubblewrap. If false, the command
 """
-function execute_bash(command::String, wd::String, terminal::String, foreground=false, isolated=true)::String
+function execute_bash(command::String, wd::String, terminal::String, foreground=false, isolated=true)::TextContent
+    exitcode = nothing
+    output = IOBuffer()
+    error = IOBuffer()
+
     if !Sys.islinux() && !Sys.isapple()
-        return "shell command execution is only supported on Linux and macOS"
+        return TextContent(; type="text", text="ERROR: shell command execution is only supported on Linux and macOS")
     elseif !isolated
-        return "not isolated bash access is currently not supported"
+        return TextContent(; type="text", text="ERROR: not isolated bash access is currently not supported")
     elseif foreground && !isinstalled(terminal)
-        return "$terminal is required for executing shell commands in the foreground, but it is not installed on this system"
+        return TextContent(; type="text", text="ERROR: $terminal is required for executing shell commands in the foreground, but it is not installed on this system")
     elseif !isinstalled("bwrap")
-        return "bwrap (bubblewrap) is required for executing shell commands in isolation, but it is not installed on this system"
+        return TextContent(; type="text", text="ERROR: bwrap (bubblewrap) is required for executing shell commands in isolation, but it is not installed on this system")
     end
 
     exec = String[]
@@ -45,48 +50,44 @@ function execute_bash(command::String, wd::String, terminal::String, foreground=
         foreach(dir -> append!(exec, ["--ro-bind-try", dir, dir]), READ_ONLY_DIRECTORIES)
         foreach(dir -> append!(exec, ["--bind", dir, dir]), READ_WRITE_DIRECTORIES)
         if !isempty(wd) && isvalidpath(wd, "read")
-             append!(exec, ["--chdir", wd])
-        elseif isvalidpath(Sys.homedir(), "read")
-             append!(exec, ["--chdir", Sys.homedir()])
+            append!(exec, ["--chdir", wd])
+        elseif isvalidpath(Base.Filesystem.homedir(), "read")
+            append!(exec, ["--chdir", Base.Filesystem.homedir()])
         elseif !isempty(union(READ_ONLY_DIRECTORIES, READ_WRITE_DIRECTORIES))
-             append!(exec, ["--chdir", union(READ_ONLY_DIRECTORIES, READ_WRITE_DIRECTORIES)[1]])       
+            append!(exec, ["--chdir", union(READ_ONLY_DIRECTORIES, READ_WRITE_DIRECTORIES)[1]])
         end
         append!(exec, ["bash", "-c", command])
         @debug "Executing shell command with bubblewrap: $(join(exec, " "))"
         if foreground
             cmd = Cmd(exec)
             run(pipeline(cmd, stdin=devnull, stdout=devnull, stderr=devnull); wait=true)
-            return "command executed in foreground with terminal: $terminal"
-        else
-            cmd = Cmd(exec)
-            output = read(ignorestatus(cmd), String)
-            return isnothing(output) ? "" : chomp(output)
-        end            
+            return TextContent(; type="text", text="command executed in terminal")
+        else            
+            cmd = Cmd(exec) |> ignorestatus
+            process = run(pipeline(cmd; stdin=devnull, stdout=output, stderr=error))
+            exitcode = process.exitcode
+        end
     catch err
-        return "failed to execute command: $err"
+        return TextContent(; type="text", text="ERROR: tool error during execution: $err")
     end
+
+    response = Dict("exitcode" => exitcode, "stdout" => String(take!(output)) |> chomp, "stderr" => String(take!(error)) |> chomp)
+    return TextContent(; type="text", text=JSON.json(response))
 end
 
 
+"""
+    list_of_commands()
+
+Returns a list of common system commands that are typically available on Linux systems. This list is used to inform the
+LLM client about the commands they can use when executing shell commands through the tool.
+"""
 function list_of_commands()
-    cmds = String[]
-    isinstalled("awk") && push!(cmds, "awk")
-    isinstalled("sed") && push!(cmds, "sed")
-    isinstalled("grep") && push!(cmds, "grep")
-    isinstalled("find") && push!(cmds, "find")
-    isinstalled("tree") && push!(cmds, "tree")
-    isinstalled("curl") && push!(cmds, "curl")
-    isinstalled("wget") && push!(cmds, "wget")
-    isinstalled("ffmpeg") && push!(cmds, "ffmpeg")
-    isinstalled("convert") && push!(cmds, "convert (ImageMagick)")
-    isinstalled("gzip") && push!(cmds, "gzip")
-    isinstalled("tar") && push!(cmds, "tar")
-    isinstalled("unzip") && push!(cmds, "unzip")
-    isinstalled("zip") && push!(cmds, "zip")
-    isinstalled("bzip2") && push!(cmds, "bzip2")
-    isinstalled("7z") && push!(cmds, "7z (p7zip)")
-    isinstalled("pandoc") && push!(cmds, "pandoc")
-    isinstalled("jq") && push!(cmds, "jq")
+    commands = ["ls", "head", "tail", "cd", "mkdir", "rmdir", "rm", "cp", "mv", "ln", "ps", "df", "du", "free",
+        "ping", "awk", "sed", "grep", "tree", "curl", "wget", "ffmpeg", "convert", "gzip", "tar", "unzip", "zip",
+        "bzip2", "7z", "pandoc", "jq", "python", "python3", "node", "git", "deno", "bun"]
+    
+    return filter(cmd -> isinstalled(cmd), commands)
 end
 
 
@@ -119,9 +120,8 @@ function init_shell_tool(config::Dict)
                 required = false
             )
         ],
-        handler=params -> begin
-            res = execute_bash(params["command"], get(params, "working_directory", ""), config["applications"]["terminal"], parse_bool(get(params, "open_terminal", false), false))
-            return TextContent(; type="text", text=res)
+        handler = params -> begin
+            execute_bash(params["command"], get(params, "working_directory", ""), config["applications"]["terminal"], parse_bool(get(params, "open_terminal", false), false))
         end
     )
     TOOLS[shell_tool.name] = shell_tool
