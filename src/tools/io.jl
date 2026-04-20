@@ -3,7 +3,16 @@ const SUPPORTED_IMAGE_FORMATS = [".jpg", ".jpeg", ".png", ".bmp", ".gif", ".tiff
 const PDFTOTEXT_INSTALLED = isinstalled("pdftotext")
 const PANDOC_INSTALLED = isinstalled("pandoc")
 const PANDOC_INPUT_FORMATS = [".docx", ".pptx", ".odt", ".doc", ".rtf", ".epub", ".html"]
-const PANDOC_OUTPUT_FORMATS = [".html", ".docx", ".odt", ".doc", ".pdf", ".pptx"]
+const PANDOC_OUTPUT_FORMATS = [".html", ".docx", ".odt", ".doc", ".pptx"]   # except for PDF, which requires a LaTeX engine and additional configuration
+const PANDOC_PDF_ENGINE = if isinstalled("lualatex")
+    "lualatex"
+elseif isinstalled("xelatex")
+    "xelatex"
+elseif isinstalled("pdflatex")
+    "pdflatex"
+else
+    ""
+end
 
 # read
 
@@ -57,14 +66,18 @@ Reads the content of a file at the specified path. The file must be within the a
 """
 function read_file(path::AbstractString)::Union{TextContent,ImageContent,String}
     if !isvalidpath(path, "read")
-        return "access denied or invalid path: $path"
+        return "ERROR: access denied or invalid path: $path, you have only read permissions for the following directories: $(join(union(READ_ONLY_DIRECTORIES, READ_WRITE_DIRECTORIES), ", ", " and "))."
     elseif !isfile(path)
         return "file not found: $path"
     end
 
     try
         mime = mime_from_path(path)
-        if string(mime)[1:4] == "text"
+        if mime == MIME("text/csv")
+            data = CSV.read(path, DataFrame; stripwhitespace=true, strict=true, stringtype=String)
+            table_md = pretty_table(String, data; backend=:markdown, show_first_column_label_only=true)
+            return TextContent(; type="text", text=table_md)
+        elseif string(mime)[1:4] == "text"
             return TextContent(; type="text", text=read(path, String))
         elseif splitext(path)[2] in SUPPORTED_IMAGE_FORMATS
             data = downscale_image(path)
@@ -94,7 +107,7 @@ function init_read_file_tool(config::Dict)
     @info "initialize read file tool"
     read_file_tool = MCPTool(
         name="read_file",
-        description="reads the content of a file at the specified path. The file must be within the allowed directories ($(join(union(READ_ONLY_DIRECTORIES, READ_WRITE_DIRECTORIES), ", ", " and "))) and of a supported type. Returns a Content object containing the file data or an error message if the file cannot be read.",
+        description="reads the content of a file at the specified path. The file must be within the allowed directories ($(join(union(READ_ONLY_DIRECTORIES, READ_WRITE_DIRECTORIES), ", ", " and "))).",
         parameters=[
             ToolParameter(
                 name = "path",
@@ -112,6 +125,7 @@ function init_read_file_tool(config::Dict)
             end
         end
     )
+
     TOOLS[read_file_tool.name] = read_file_tool
 end
 
@@ -131,13 +145,14 @@ If `raw` is true, the content is written directly to the file as text. If `raw` 
 expected to be valid markdown and will be converted to the file type inferred from the file extension.
 Returns a success message if the file is written successfully, or an error message if the operation fails.
 """
-function write_file(content::String, path::String; raw=false)::String
+function write_file(content::String, path::String; raw=false, working_directory::Union{Nothing,String}=nothing)::String
     if !isvalidpath(path, "write")
-        return "access denied or invalid path: $path"
+        return "ERROR: access denied or invalid path: $path, you have only write permissions for the following directories: $(join(READ_WRITE_DIRECTORIES, ", ", " and "))."
     end
-    @show raw
 
-    if raw || splitext(path)[2] in (".txt", ".md")
+    target_file_extension = splitext(path)[2] |> lowercase
+
+    if raw || target_file_extension in (".txt", ".md")
         try
             open(path, "w") do io
                 write(io, content)
@@ -146,24 +161,52 @@ function write_file(content::String, path::String; raw=false)::String
         catch err
             return "failed to write file: $err"
         end
-    elseif PANDOC_INSTALLED && splitext(path)[2] in PANDOC_OUTPUT_FORMATS
+    elseif target_file_extension == ".pdf"
+        if PANDOC_INSTALLED && !isempty(PANDOC_PDF_ENGINE)
+            tempfile = tempname() * ".md"
+            exec = ["pandoc", tempfile, "-o", path, "--pdf-engine=$PANDOC_PDF_ENGINE"]
+            try
+                open(tempfile, "w") do io
+                    write(io, content)
+                end
+                if isnothing(working_directory)
+                    run(pipeline(Cmd(exec), stderr=devnull))
+                else
+                    run(pipeline(Cmd(Cmd(exec); dir=working_directory), stderr=devnull))
+                end
+                rm(tempfile)
+                return "file written successfully to: $path"
+            catch err
+                if isfile(tempfile)
+                    rm(tempfile)
+                end
+                return "ERROR: failed to write file with pandoc conversion: $err"
+            end
+        else
+            return "ERROR: can't create PDF, due to missing dependencies. Please install pandoc and a LaTeX engine (lualatex, xelatex or pdflatex)."
+        end
+    elseif target_file_extension in PANDOC_OUTPUT_FORMATS && PANDOC_INSTALLED
         tempfile = tempname() * ".md"
         exec = ["pandoc", tempfile, "-o", path, "--pdf-engine=lualatex"]
         try
             open(tempfile, "w") do io
                 write(io, content)
             end
-            readchomp(pipeline(Cmd(exec), stderr=devnull))
+            if isnothing(working_directory)
+                run(pipeline(Cmd(exec), stderr=devnull))
+            else
+                run(pipeline(Cmd(Cmd(exec); dir=working_directory), stderr=devnull))
+            end
             rm(tempfile)
             return "file written successfully to: $path"
         catch err
             if isfile(tempfile)
                 rm(tempfile)
             end
-            return "failed to write file with pandoc conversion: $err"
+            return "ERROR: failed to write file with pandoc conversion: $err"
         end
     else
-        return "failed to write file: \"$(basename(path))\", unsupported output format or missing dependency pandoc for format conversion. Supported output formats are: $(join(PANDOC_OUTPUT_FORMATS, ", ", " and ")). Please install pandoc to enable conversion of markdown to various document formats."
+        return "ERROR: failed to write file: \"$(basename(path))\", unsupported output format or missing dependency pandoc for format conversion. Please install pandoc to enable conversion of markdown to various document formats."
     end
 end
 
@@ -191,10 +234,16 @@ function init_write_file_tool(config::Dict)
                 type = "bool",
                 description = "if true, writes content directly as text without format conversion. If false (default), treats content as markdown and converts it to the target format based on file extension.",
                 required = false
+            ),
+            ToolParameter(
+                name = "working_directory",
+                type = "str",
+                description = "the working directory where the pandoc command should be executed for format conversion. This can be used to specify the location of any media files that the markdown content references.",
+                required = false
             )
         ],
         handler = params -> begin
-            res = write_file(params["content"], params["path"]; raw=parse_bool(get(params, "raw", false), false))
+            res = write_file(params["content"], params["path"]; raw=parse_bool(get(params, "raw", false), false), working_directory=get(params, "working_directory", nothing))
             return TextContent(; type="text", text=res)
         end
     )
@@ -203,4 +252,3 @@ end
 
 push!(INIT_FUNCTIONS, init_write_file_tool)
 
-# write as

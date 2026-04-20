@@ -1,9 +1,11 @@
 #using Pkg; Pkg.activate(joinpath(@__DIR__, ".."))
 include(joinpath(@__DIR__, "..", "src", "Anglerfish.jl"))
 
-using Test
+using CSV
+using DataFrames
 using JSON
 using ModelContextProtocol
+using Test
 
 push!(ARGS, "TEST_MODE")
 
@@ -235,6 +237,10 @@ end
             # test reading a file with unsupported type (assuming .exe is not supported)
             read_file_result_unsupported = read_file_tool.handler(Dict("path" => joinpath(ro_dir, "application.deb"))).text
             @test startswith(read_file_result_unsupported, "file type:")
+
+            # read a CSV table
+            read_file_result_csv = read_file_tool.handler(Dict("path" => joinpath(ro_dir, "test_table.csv"))).text
+            @test contains(read_file_result_csv, "Alice") && contains(read_file_result_csv, "Bob") && contains(read_file_result_csv, "Age") && contains(read_file_result_csv, "City")
         end
 
         @testset "Write File" begin
@@ -247,11 +253,11 @@ end
 
             # test writing to a file in a read-only directory (should return an error)
             write_file_result_read_only = write_file_tool.handler(Dict("path" => joinpath(ro_dir, "test_write.txt"), "content" => "This should fail.")).text
-            @test startswith(write_file_result_read_only, "access denied or invalid path:")
+            @test startswith(write_file_result_read_only, "ERROR: access denied or invalid path:")
 
             # test writing to a file with an invalid path (should return an error)
             write_file_result_invalid_path = write_file_tool.handler(Dict("path" => "/invalid/directory/test_write.txt", "content" => "This should also fail.")).text
-            @test startswith(write_file_result_invalid_path, "access denied or invalid path:")
+            @test startswith(write_file_result_invalid_path, "ERROR: access denied or invalid path:")
 
             # test writing raw content by creating a julia file and checking that it can be executed
             write_file_result_raw = write_file_tool.handler(Dict("path" => joinpath(rw_dir, "test_script.jl"), "content" => "println(\"Hello from test script\")", "raw" => true)).text
@@ -264,10 +270,22 @@ end
             @test write_file_result_pdf == "file written successfully to: $(joinpath(rw_dir, "test.pdf"))"
             @test isfile(joinpath(rw_dir, "test.pdf"))
 
+            # create CSV table
+            csv_content = "Name,Age,City\nAlice,30,New York\nBob,25,Los Angeles"
+            write_table_result = write_file_tool.handler(Dict("path" => joinpath(rw_dir, "test_table.csv"), "content" => csv_content, "raw" => true)).text
+            @test write_table_result == "file written successfully to: $(joinpath(rw_dir, "test_table.csv"))"
+            @test isfile(joinpath(rw_dir, "test_table.csv"))
+            table_data = CSV.File(joinpath(rw_dir, "test_table.csv")) |> DataFrame
+            @test size(table_data) == (2, 3)
+            @test names(table_data) == ["Name", "Age", "City"]
+            @test table_data[1, :] |> collect == ["Alice", 30, "New York"]
+            @test table_data[2, :] |> collect == ["Bob", 25, "Los Angeles"]
+
             # clean up test files
             rm(joinpath(rw_dir, "test_write.txt"))
             rm(joinpath(rw_dir, "test_script.jl"))
             rm(joinpath(rw_dir, "test.pdf"))
+            rm(joinpath(rw_dir, "test_table.csv"))
         end
     end
 

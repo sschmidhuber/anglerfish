@@ -1,14 +1,17 @@
 module Anglerfish
 
 using BaseDirs
+using CSV
+using DataFrames
 using Dates
 using FileIO
 using ImageTransformations
-using MIMEs
 using JSON
+using MIMEs
 using ModelContextProtocol
-using TimeZones
+using PrettyTables
 using TOML
+using TimeZones
 using UUIDs
 
 const TOOLS = Dict{String,ModelContextProtocol.MCPTool}()
@@ -23,6 +26,7 @@ include("tools/calendar.jl")
 include("tools/filesystem.jl")
 include("tools/shell.jl")
 include("tools/io.jl")
+include("tools/analytics.jl")
 
 export main
 
