@@ -3,6 +3,7 @@ module Anglerfish
 using BaseDirs
 using CSV
 using DataFrames
+using DataFramesMeta
 using Dates
 using FileIO
 using ImageTransformations
@@ -10,6 +11,7 @@ using JSON
 using MIMEs
 using ModelContextProtocol
 using PrettyTables
+using SQLite
 using TOML
 using TimeZones
 using UUIDs
