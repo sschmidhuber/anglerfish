@@ -165,6 +165,230 @@ push!(INIT_FUNCTIONS, init_execute_sql_tool)
 # plotting
 
 """
+    plot_bar(path::String, xcolumn::String, ycolumns::Vector{String}; output_path::Union{Nothing,String}=nothing, title::Union{Nothing,String}=nothing, x_axis_label::Union{Nothing,String}=nothing, y_axis_label::Union{Nothing,String}=nothing, with_legend::Bool=true, stacked::Bool=false)::Content
+
+Generates a bar plot from a CSV file at the specified path.
+
+Arguments:
+- `path::String`: the path to the CSV file containing the data to be plotted. The file must be a valid CSV file and the path must be accessible with read permissions.
+- `xcolumn::String`: the name of the column in the CSV file to be used for the x-axis of the plot.
+- `ycolumns::Vector{String}`: a vector of column names in the CSV file to be used for the y-axis of the plot. Multiple columns can be specified to create a grouped or stacked bar plot.
+- `output_path::Union{Nothing,String}`: optional path where the generated plot should be saved as an image file (e.g. PNG). If not provided, the plot will be returned as a base64-encoded string in an ImageContent object. If provided, the path must be accessible with write permissions and must have a valid image file extension (e.g. .png, .jpg, .svg).
+- `title::Union{Nothing,String}`: optional title for the plot. If not provided, no title will be displayed.
+- `x_axis_label::Union{Nothing,String}`: optional label for the x-axis. Defaults to the selected x-column name.
+- `y_axis_label::Union{Nothing,String}`: optional label for the y-axis. Defaults to the selected y-column name for single-series plots and no label for multi-series plots.
+- `colors::Vector{String}`: optional vector of color names. If not provided, a default color palette will be used. Supported color names are: "blue", "orange", "green", "purple", "lightblue", "red", and "yellow".
+- `with_legend::Bool`: whether to include a legend in the plot when multiple y-columns are specified. Default is true.
+- `stacked::Bool`: whether to create a stacked bar plot when multiple y-columns are specified. Default is false (grouped bar plot).
+"""
+function plot_bar(path::String, xcolumn::String, ycolumns::Vector{String}; output_path::Union{Nothing,String}=nothing, title::Union{Nothing,String}=nothing, x_axis_label::Union{Nothing,String}=nothing, y_axis_label::Union{Nothing,String}=nothing, colors::Vector{String}=String[], with_legend::Bool=true, stacked::Bool=false)::Content
+    local tempfile = nothing
+    local palette = nothing
+
+    if !isvalidpath(path, "read")
+        return TextContent(; type="text", text="ERROR: access denied or invalid path: $path, you have only read permissions for the following directories: $(join(union(READ_ONLY_DIRECTORIES, READ_WRITE_DIRECTORIES), ", ", " and ")).")
+    elseif !isfile(path)
+        return TextContent(; type="text", text="ERROR: $path is not a file")
+    elseif !endswith(lowercase(path), ".csv")
+        return TextContent(; type="text", text="ERROR: file type not supported for plotting. Only CSV files are supported.")
+    elseif !isnothing(output_path) && !isvalidpath(output_path, "write")
+        return TextContent(; type="text", text="ERROR: access denied or invalid path: $output_path, you have only write permissions for the following directories: $(join(READ_WRITE_DIRECTORIES, ", ", " and ")).")
+    elseif !isnothing(output_path) && !(splitext(output_path)[2] in [".png", ".svg"])
+        return TextContent(; type="text", text="ERROR: file type not supported for plot output. Supported image formats are: .png and .svg.")
+    end
+
+    try
+        data = CSV.read(path, DataFrame; stripwhitespace=true, strict=true, stringtype=String)
+        if !(xcolumn in names(data))
+            return TextContent(; type="text", text="ERROR: x-column '$xcolumn' not found in CSV file.")
+        elseif isempty(ycolumns)
+            return TextContent(; type="text", text="ERROR: at least one y-column must be provided.")
+        elseif !all(ycol -> ycol in names(data), ycolumns)
+            return TextContent(; type="text", text="ERROR: one or more y-columns not found in CSV file.")
+        end
+
+        # convert y-columns to numeric, non-convertible values will be set to missing
+        for ycol in ycolumns
+            data[!, ycol] = map(data[!, ycol]) do value
+                if ismissing(value)
+                    missing
+                elseif value isa Real
+                    Float64(value)
+                elseif value isa AbstractString
+                    tryparse(Float64, value)
+                else
+                    missing
+                end
+            end
+        end
+
+        # create plot
+        xlabels = string.(data[!, xcolumn])
+        positions = Int[]
+        heights = Float64[]
+        groups = Int[]
+        group_labels = String[]
+
+        for (group_index, ycol) in enumerate(ycolumns)
+            push!(group_labels, ycol)
+            for (row_index, value) in enumerate(data[!, ycol])
+                if !ismissing(value) && !isnothing(value)
+                    push!(positions, row_index)
+                    push!(heights, value)
+                    push!(groups, group_index)
+                end
+            end
+        end
+
+        if isempty(heights)
+            return TextContent(; type="text", text="ERROR: no numeric values found in the selected y-columns.")
+        end
+
+        fig = Figure(size=(1440, 900))
+        axis = Axis(
+            fig[1, 1];
+            xticks=(collect(1:length(xlabels)), xlabels),
+            xticklabelrotation=pi / 6,
+            xlabel=isnothing(x_axis_label) ? "" : x_axis_label,
+            ylabel=isnothing(y_axis_label) ? "" : y_axis_label,
+            title=isnothing(title) ? "" : title
+        )
+
+        # set colors
+        if isempty(colors) || length(colors) != length(ycolumns)
+            # set default colors
+            c = Makie.wong_colors()
+            palette = [c[i] for i in 1:length(ycolumns)]
+        else
+            palette = [getcolor(color) for color in colors]
+        end
+        bar_colors = length(ycolumns) == 1 ? palette[1] : [palette[group] for group in groups]
+
+        plot = if length(ycolumns) == 1
+            barplot!(axis, positions, heights; color=bar_colors, strokecolor=:black, strokewidth=1)
+        elseif stacked
+            barplot!(axis, positions, heights; stack=groups, color=bar_colors, strokecolor=:black, strokewidth=1)
+        else
+            barplot!(axis, positions, heights; dodge=groups, color=bar_colors, strokecolor=:black, strokewidth=1, n_dodge=length(ycolumns))
+        end
+
+        # add legend if multiple y-columns and with_legend is true
+        if with_legend && length(ycolumns) > 1
+            legend_elements = [PolyElement(polycolor=palette[index], strokecolor=:black, strokewidth=1) for index in eachindex(group_labels)]
+            Legend(fig[1, 2], legend_elements, group_labels)
+        end
+
+        if isnothing(output_path)
+            # return plot as base64-encoded string
+            tempfile = tempname() * ".png"
+            save(tempfile, fig)
+            data = downscale_image(tempfile)
+            return ImageContent(; type="image", data=data, mime_type="image/png")
+        else
+            # save plot to specified path
+            @info "analytics.jl: save plot to $output_path"
+            save(output_path, fig)
+            @info "plot saved to $output_path"
+            return TextContent(; type="text", text="plot generated successfully and saved to $output_path")
+        end
+    catch error
+        return TextContent(; type="text", text="failed to generate plot: $error")
+    finally
+        if !isnothing(tempfile) && isfile(tempfile)
+            rm(tempfile, force=true)
+        end
+    end
+
+end
+
+
+function init_plot_bar_tool(config::Dict)
+    plot_bar_tool = MCPTool(
+        name="plot_bar",
+        description="generates a bar plot based on the data of a CSV table. Supports single-series, grouped, and stacked bar charts and can return the plot as image content or save it to an output image file.",
+        parameters=[
+            ToolParameter(
+                name = "path",
+                type = "str",
+                description = "the path to the CSV file containing the data to be plotted",
+                required = true
+            ),
+            ToolParameter(
+                name = "xcolumn",
+                type = "str",
+                description = "the column to use for x-axis categories",
+                required = true
+            ),
+            ToolParameter(
+                name = "ycolumns",
+                type = "array",
+                description = "one or more numeric columns to plot as bar heights",
+                required = true
+            ),
+            ToolParameter(
+                name = "output_path",
+                type = "str",
+                description = "optional output image path (.png or .svg)",
+                required = false
+            ),
+            ToolParameter(
+                name = "title",
+                type = "str",
+                description = "optional plot title",
+                required = false
+            ),
+            ToolParameter(
+                name = "x_axis_label",
+                type = "str",
+                description = "optional label for the x-axis",
+                required = false
+            ),
+            ToolParameter(
+                name = "y_axis_label",
+                type = "str",
+                description = "optional label for the y-axis",
+                required = false
+            ),
+            ToolParameter(
+                name = "colors",
+                type = "array",
+                description = "optional vector of color names for the bars. Supported color names are: \"blue\", \"orange\", \"green\", \"purple\", \"lightblue\", \"red\", and \"yellow\". If not provided, a default color palette will be used.",
+                required = false
+            ),
+            ToolParameter(
+                name = "with_legend",
+                type = "bool",
+                description = "whether to include a legend when plotting multiple y-columns",
+                required = false
+            ),
+            ToolParameter(
+                name = "stacked",
+                type = "bool",
+                description = "whether multiple y-columns should be stacked instead of grouped",
+                required = false
+            )
+        ],
+        handler = params -> plot_bar(
+            params["path"],
+            params["xcolumn"],
+            String.(params["ycolumns"]);
+            output_path=get(params, "output_path", nothing),
+            title=get(params, "title", nothing),
+            x_axis_label=get(params, "x_axis_label", nothing),
+            y_axis_label=get(params, "y_axis_label", nothing),
+            colors=get(params, "colors", String[]),
+            with_legend=parse_bool(get(params, "with_legend", true), true),
+            stacked=parse_bool(get(params, "stacked", false), false)
+        )
+    )
+
+    TOOLS[plot_bar_tool.name] = plot_bar_tool
+end
+
+push!(INIT_FUNCTIONS, init_plot_bar_tool)
+
+
+"""
     gnuplot()
 
 Generates a plot using gnuplot based on the provided script. The script should be a valid gnuplot script that defines the plot to be generated.

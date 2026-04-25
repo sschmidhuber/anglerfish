@@ -1,6 +1,8 @@
 module Anglerfish
 
+using Base64
 using BaseDirs
+using CairoMakie
 using CSV
 using DataFrames
 using DataFramesMeta
@@ -8,6 +10,7 @@ using Dates
 using FileIO
 using ImageTransformations
 using JSON
+using Makie
 using MIMEs
 using ModelContextProtocol
 using PrettyTables

@@ -359,6 +359,52 @@ end
             @test startswith(describe_not_csv, "ERROR: file type not supported")
         end
 
+        @testset "Plot Bar" begin
+            plot_bar_tool = Anglerfish.TOOLS["plot_bar"]
+            output_path_png = joinpath(rw_dir, "test_barplot.png")
+            output_path_svg = joinpath(rw_dir, "test_barplot.svg")
+
+            # plot to PNG file with title, single y-column
+            plot_result = plot_bar_tool.handler(Dict(
+                "path" => joinpath(ro_dir, "test_table.csv"),
+                "xcolumn" => "Name",
+                "ycolumns" => ["Age"],
+                "output_path" => output_path_png,
+                "title" => "Ages",
+                "x_axis_label" => "Students",
+                "y_axis_label" => "Years"
+            )).text
+            @test startswith(plot_result, "plot generated successfully")
+            @test isfile(output_path_png)
+            @test filesize(output_path_png) > 0
+
+            # plot to SVG file without title, multiple y-columns
+            plot_result_multiple_y = plot_bar_tool.handler(Dict(
+                "path" => joinpath(ro_dir, "test_table.csv"),
+                "xcolumn" => "Sex",
+                "ycolumns" => ["Height", "Weight"],
+                "colors" => ["blue", "red"],
+                "output_path" => output_path_svg
+            )).text
+            @test startswith(plot_result_multiple_y, "plot generated successfully")
+            @test isfile(output_path_svg)
+            @test filesize(output_path_svg) > 0
+
+            # return plot as image content, multiple y-columns, stacked
+            plot_result_image = plot_bar_tool.handler(Dict(
+                "path" => joinpath(ro_dir, "test_table.csv"),
+                "xcolumn" => "Sex",
+                "ycolumns" => ["Height", "Weight"],
+                "stacked" => true
+            ))
+            @test plot_result_image isa ImageContent;
+            @test plot_result_image.mime_type == "image/png";
+
+            # clean up test plot file
+            isfile(output_path_png) && rm(output_path_png)
+            isfile(output_path_svg) && rm(output_path_svg)
+        end
+
         @testset "Execute SQL" begin
             execute_sql_tool = Anglerfish.TOOLS["execute_sql"]
 

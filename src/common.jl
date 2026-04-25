@@ -101,3 +101,28 @@ function downscale_image(path::AbstractString, max_image_dimension=1024)::Vector
     FileIO.save(FileIO.Stream{fmt}(io), resized)
     return take!(io)
 end
+
+
+"""
+    getcolor(color_name::String)
+
+Returns a color from the Makie wong color palette based on the provided color name. Supported color names are: "blue", "orange", "green", "purple", "lightblue", "red", and "yellow". The function is case-insensitive. If an unsupported color name is provided, an ArgumentError is thrown with a message listing the supported colors.
+"""
+function getcolor(color_name::String)
+    c = Makie.wong_colors()
+    color_map = Dict(
+        "blue" => c[1],
+        "orange" => c[2],
+        "green" => c[3],
+        "purple" => c[4],
+        "lightblue" => c[5],
+        "red" => c[6],
+        "yellow" => c[7]
+    )
+
+    if haskey(color_map, lowercase(color_name))
+        return color_map[lowercase(color_name)]
+    else
+        throw(ArgumentError("Unsupported color name: $color_name. Supported colors are: $(join(keys(color_map), ", ", " and "))."))
+    end
+end
