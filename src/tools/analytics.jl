@@ -286,9 +286,7 @@ function plot_bar(path::String, xcolumn::String, ycolumns::Vector{String}; outpu
             return ImageContent(; type="image", data=data, mime_type="image/png")
         else
             # save plot to specified path
-            @info "analytics.jl: save plot to $output_path"
             save(output_path, fig)
-            @info "plot saved to $output_path"
             return TextContent(; type="text", text="plot generated successfully and saved to $output_path")
         end
     catch error
@@ -386,6 +384,223 @@ function init_plot_bar_tool(config::Dict)
 end
 
 push!(INIT_FUNCTIONS, init_plot_bar_tool)
+
+
+"""
+    plot_line(path::String, xcolumn::String, ycolumns::Vector{String}; output_path::Union{Nothing,String}=nothing, title::Union{Nothing,String}=nothing, x_axis_label::Union{Nothing,String}=nothing, y_axis_label::Union{Nothing,String}=nothing, colors::Vector{String}=String[], with_legend::Bool=true)::Content
+
+Generates a line plot from a CSV file at the specified path.
+
+Arguments:
+- `path::String`: the path to the CSV file containing the data to be plotted. The file must be a valid CSV file and the path must be accessible with read permissions.
+- `xcolumn::String`: the name of the column in the CSV file to be used for the x-axis of the plot.
+- `ycolumns::Vector{String}`: a vector of column names in the CSV file to be used for the y-axis of the plot. Multiple columns can be specified to create a multi-series line plot.
+- `output_path::Union{Nothing,String}`: optional path where the generated plot should be saved as an image file (e.g. PNG). If not provided, the plot will be returned as a base64-encoded string in an ImageContent object. If provided, the path must be accessible with write permissions and must have a valid image file extension (e.g. .png or .svg).
+- `title::Union{Nothing,String}`: optional title for the plot. If not provided, no title will be displayed.
+- `x_axis_label::Union{Nothing,String}`: optional label for the x-axis. Defaults to the selected x-column name.
+- `y_axis_label::Union{Nothing,String}`: optional label for the y-axis. Defaults to the selected y-column name for single-series plots and no label for multi-series plots.
+- `colors::Vector{String}`: optional vector of color names. If not provided, a default color palette will be used. Supported color names are: "blue", "orange", "green", "purple", "lightblue", "red", and "yellow".
+- `with_legend::Bool`: whether to include a legend in the plot when multiple y-columns are specified. Default is true.
+"""
+function plot_line(path::String, xcolumn::String, ycolumns::Vector{String}; output_path::Union{Nothing,String}=nothing, title::Union{Nothing,String}=nothing, x_axis_label::Union{Nothing,String}=nothing, y_axis_label::Union{Nothing,String}=nothing, colors::Vector{String}=String[], with_legend::Bool=true)::Content
+    local tempfile = nothing
+    local palette = nothing
+
+    if !isvalidpath(path, "read")
+        return TextContent(; type="text", text="ERROR: access denied or invalid path: $path, you have only read permissions for the following directories: $(join(union(READ_ONLY_DIRECTORIES, READ_WRITE_DIRECTORIES), ", ", " and ")).")
+    elseif !isfile(path)
+        return TextContent(; type="text", text="ERROR: $path is not a file")
+    elseif !endswith(lowercase(path), ".csv")
+        return TextContent(; type="text", text="ERROR: file type not supported for plotting. Only CSV files are supported.")
+    elseif !isnothing(output_path) && !isvalidpath(output_path, "write")
+        return TextContent(; type="text", text="ERROR: access denied or invalid path: $output_path, you have only write permissions for the following directories: $(join(READ_WRITE_DIRECTORIES, ", ", " and ")).")
+    elseif !isnothing(output_path) && !(splitext(output_path)[2] in [".png", ".svg"])
+        return TextContent(; type="text", text="ERROR: file type not supported for plot output. Supported image formats are: .png and .svg.")
+    end
+
+    try
+        data = CSV.read(path, DataFrame; stripwhitespace=true, strict=true, stringtype=String)
+        if !(xcolumn in names(data))
+            return TextContent(; type="text", text="ERROR: x-column '$xcolumn' not found in CSV file.")
+        elseif isempty(ycolumns)
+            return TextContent(; type="text", text="ERROR: at least one y-column must be provided.")
+        elseif !all(ycol -> ycol in names(data), ycolumns)
+            return TextContent(; type="text", text="ERROR: one or more y-columns not found in CSV file.")
+        end
+
+        for ycol in ycolumns
+            data[!, ycol] = map(data[!, ycol]) do value
+                if ismissing(value)
+                    missing
+                elseif value isa Real
+                    Float64(value)
+                elseif value isa AbstractString
+                    tryparse(Float64, value)
+                else
+                    missing
+                end
+            end
+        end
+
+        parsed_xvalues = map(data[!, xcolumn]) do value
+            if ismissing(value)
+                missing
+            elseif value isa Real
+                Float64(value)
+            elseif value isa AbstractString
+                tryparse(Float64, value)
+            else
+                missing
+            end
+        end
+        xlabels = string.(data[!, xcolumn])
+        use_numeric_x = all(value -> !ismissing(value) && !isnothing(value), parsed_xvalues)
+        xvalues = use_numeric_x ? Float64.(parsed_xvalues) : collect(1:nrow(data))
+
+        if isempty(colors) || length(colors) != length(ycolumns)
+            c = Makie.wong_colors()
+            palette = [c[i] for i in 1:length(ycolumns)]
+        else
+            palette = [getcolor(color) for color in colors]
+        end
+
+        fig = Figure(size=(1440, 900))
+        axis = Axis(
+            fig[1, 1];
+            xlabel=isnothing(x_axis_label) ? "" : x_axis_label,
+            ylabel=isnothing(y_axis_label) ? "" : y_axis_label,
+            title=isnothing(title) ? "" : title
+        )
+
+        if !use_numeric_x
+            axis.xticks = (collect(1:length(xlabels)), xlabels)
+            axis.xticklabelrotation = pi / 6
+        end
+
+        plotted_any_series = false
+        for (index, ycol) in enumerate(ycolumns)
+            points_x = Float64[]
+            points_y = Float64[]
+            for row_index in eachindex(data[!, ycol])
+                yvalue = data[row_index, ycol]
+                if !ismissing(yvalue) && !isnothing(yvalue)
+                    push!(points_x, use_numeric_x ? xvalues[row_index] : Float64(row_index))
+                    push!(points_y, yvalue)
+                end
+            end
+
+            if !isempty(points_y)
+                lines!(axis, points_x, points_y; color=palette[index], linewidth=3, label=ycol)
+                scatter!(axis, points_x, points_y; color=palette[index], markersize=10)
+                plotted_any_series = true
+            end
+        end
+
+        if !plotted_any_series
+            return TextContent(; type="text", text="ERROR: no numeric values found in the selected y-columns.")
+        end
+
+        if with_legend && length(ycolumns) > 1
+            legend_elements = [LineElement(color=palette[index], linewidth=3) for index in eachindex(ycolumns)]
+            Legend(fig[1, 2], legend_elements, ycolumns)
+        end
+
+        if isnothing(output_path)
+            tempfile = tempname() * ".png"
+            save(tempfile, fig)
+            data = downscale_image(tempfile)
+            return ImageContent(; type="image", data=data, mime_type="image/png")
+        else
+            save(output_path, fig)
+            return TextContent(; type="text", text="plot generated successfully and saved to $output_path")
+        end
+    catch error
+        return TextContent(; type="text", text="failed to generate plot: $error")
+    finally
+        if !isnothing(tempfile) && isfile(tempfile)
+            rm(tempfile, force=true)
+        end
+    end
+end
+
+
+function init_plot_line_tool(config::Dict)
+    plot_line_tool = MCPTool(
+        name="plot_line",
+        description="generates a line plot based on the data of a CSV table. Supports single-series and multi-series line charts and can return the plot as image content or save it to an output image file.",
+        parameters=[
+            ToolParameter(
+                name = "path",
+                type = "str",
+                description = "the path to the CSV file containing the data to be plotted",
+                required = true
+            ),
+            ToolParameter(
+                name = "xcolumn",
+                type = "str",
+                description = "the column to use for x-axis values or categories",
+                required = true
+            ),
+            ToolParameter(
+                name = "ycolumns",
+                type = "array",
+                description = "one or more numeric columns to plot as line series",
+                required = true
+            ),
+            ToolParameter(
+                name = "output_path",
+                type = "str",
+                description = "optional output image path (.png or .svg)",
+                required = false
+            ),
+            ToolParameter(
+                name = "title",
+                type = "str",
+                description = "optional plot title",
+                required = false
+            ),
+            ToolParameter(
+                name = "x_axis_label",
+                type = "str",
+                description = "optional label for the x-axis",
+                required = false
+            ),
+            ToolParameter(
+                name = "y_axis_label",
+                type = "str",
+                description = "optional label for the y-axis",
+                required = false
+            ),
+            ToolParameter(
+                name = "colors",
+                type = "array",
+                description = "optional vector of color names for the line series. Supported color names are: \"blue\", \"orange\", \"green\", \"purple\", \"lightblue\", \"red\", and \"yellow\". If not provided, a default color palette will be used.",
+                required = false
+            ),
+            ToolParameter(
+                name = "with_legend",
+                type = "bool",
+                description = "whether to include a legend when plotting multiple y-columns",
+                required = false
+            )
+        ],
+        handler = params -> plot_line(
+            params["path"],
+            params["xcolumn"],
+            String.(params["ycolumns"]);
+            output_path=get(params, "output_path", nothing),
+            title=get(params, "title", nothing),
+            x_axis_label=get(params, "x_axis_label", nothing),
+            y_axis_label=get(params, "y_axis_label", nothing),
+            colors=get(params, "colors", String[]),
+            with_legend=parse_bool(get(params, "with_legend", true), true)
+        )
+    )
+
+    TOOLS[plot_line_tool.name] = plot_line_tool
+end
+
+push!(INIT_FUNCTIONS, init_plot_line_tool)
 
 
 """

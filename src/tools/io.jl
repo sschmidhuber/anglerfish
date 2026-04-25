@@ -73,11 +73,7 @@ function read_file(path::AbstractString)::Union{TextContent,ImageContent,String}
 
     try
         mime = mime_from_path(path)
-        if mime == MIME("text/csv")
-            data = CSV.read(path, DataFrame; stripwhitespace=true, strict=true, stringtype=String)
-            table_md = pretty_table(String, data; backend=:markdown, show_first_column_label_only=true)
-            return TextContent(; type="text", text=table_md)
-        elseif string(mime)[1:4] == "text"
+        if string(mime)[1:4] == "text"
             return TextContent(; type="text", text=read(path, String))
         elseif splitext(path)[2] in SUPPORTED_IMAGE_FORMATS
             data = downscale_image(path)
