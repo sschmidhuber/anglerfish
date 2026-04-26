@@ -449,6 +449,50 @@ end
             isfile(output_path_svg) && rm(output_path_svg)
         end
 
+        @testset "Plot Box" begin
+            plot_box_tool = Anglerfish.TOOLS["plot_box"]
+            output_path_png = joinpath(rw_dir, "test_boxplot.png")
+            output_path_svg = joinpath(rw_dir, "test_boxplot.svg")
+
+            # plot to PNG file with grouped categories from one numeric column
+            plot_result = plot_box_tool.handler(Dict(
+                "path" => joinpath(ro_dir, "test_table.csv"),
+                "xcolumn" => "Sex",
+                "ycolumns" => ["Age"],
+                "output_path" => output_path_png,
+                "title" => "Age Distribution by Sex",
+                "x_axis_label" => "Sex",
+                "y_axis_label" => "Age"
+            )).text
+            @test startswith(plot_result, "plot generated successfully")
+            @test isfile(output_path_png)
+            @test filesize(output_path_png) > 0
+
+            # plot to SVG file with multiple grouped series
+            plot_result_multiple_y = plot_box_tool.handler(Dict(
+                "path" => joinpath(ro_dir, "test_table.csv"),
+                "xcolumn" => "Sex",
+                "ycolumns" => ["Weight", "Height"],
+                "colors" => ["blue", "green"],
+                "output_path" => output_path_svg
+            )).text
+            @test startswith(plot_result_multiple_y, "plot generated successfully")
+            @test isfile(output_path_svg)
+            @test filesize(output_path_svg) > 0
+
+            # return plot as image content
+            plot_result_image = plot_box_tool.handler(Dict(
+                "path" => joinpath(ro_dir, "test_table.csv"),
+                "xcolumn" => "Sex",
+                "ycolumns" => ["Height", "Weight"]
+            ))
+            @test plot_result_image isa ImageContent
+            @test plot_result_image.mime_type == "image/png"
+
+            isfile(output_path_png) && rm(output_path_png)
+            isfile(output_path_svg) && rm(output_path_svg)
+        end
+
         @testset "Execute SQL" begin
             execute_sql_tool = Anglerfish.TOOLS["execute_sql"]
 

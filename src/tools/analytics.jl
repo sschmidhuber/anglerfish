@@ -165,6 +165,19 @@ push!(INIT_FUNCTIONS, init_execute_sql_tool)
 # plotting
 
 """
+    label_rotation(labels::Vector{String})::Float64
+
+Determines the appropriate label rotation angle for x-axis tick labels based on the number of columns and the maximum length of the column names. If there are fewer than 5 columns and the maximum column name length is less than 15 characters, no rotation is applied (0 degrees). Otherwise, a rotation of 30 degrees (pi/6 radians) is applied to improve readability and prevent overlap of long labels.
+"""
+function label_rotation(labels::Vector{String})::Float64
+    if length(labels) < 5 && maximum(length.(labels)) < 15
+        return 0.0
+    else
+        return pi / 6        
+    end
+end
+
+"""
     plot_bar(path::String, xcolumn::String, ycolumns::Vector{String}; output_path::Union{Nothing,String}=nothing, title::Union{Nothing,String}=nothing, x_axis_label::Union{Nothing,String}=nothing, y_axis_label::Union{Nothing,String}=nothing, with_legend::Bool=true, stacked::Bool=false)::Content
 
 Generates a bar plot from a CSV file at the specified path.
@@ -248,7 +261,7 @@ function plot_bar(path::String, xcolumn::String, ycolumns::Vector{String}; outpu
         axis = Axis(
             fig[1, 1];
             xticks=(collect(1:length(xlabels)), xlabels),
-            xticklabelrotation=pi / 6,
+            xticklabelrotation=label_rotation(xlabels),
             xlabel=isnothing(x_axis_label) ? "" : x_axis_label,
             ylabel=isnothing(y_axis_label) ? "" : y_axis_label,
             title=isnothing(title) ? "" : title
@@ -474,7 +487,7 @@ function plot_line(path::String, xcolumn::String, ycolumns::Vector{String}; outp
 
         if !use_numeric_x
             axis.xticks = (collect(1:length(xlabels)), xlabels)
-            axis.xticklabelrotation = pi / 6
+            axis.xticklabelrotation = label_rotation(xlabels)
         end
 
         plotted_any_series = false
@@ -601,6 +614,213 @@ function init_plot_line_tool(config::Dict)
 end
 
 push!(INIT_FUNCTIONS, init_plot_line_tool)
+
+
+"""
+    plot_box(path::String, xcolumn::String, ycolumns::Vector{String}; output_path::Union{Nothing,String}=nothing, title::Union{Nothing,String}=nothing, x_axis_label::Union{Nothing,String}=nothing, y_axis_label::Union{Nothing,String}=nothing, colors::Vector{String}=String[], with_legend::Bool=true)::Content
+
+Generates a box plot from a CSV file at the specified path.
+
+Arguments:
+- `path::String`: the path to the CSV file containing the data to be plotted. The file must be a valid CSV file and the path must be accessible with read permissions.
+- `xcolumn::String`: the name of the column in the CSV file to be used for grouping the box plots on the x-axis.
+- `ycolumns::Vector{String}`: a vector of numeric column names in the CSV file to be plotted as box plot distributions. Multiple columns can be specified to create grouped box plots.
+- `output_path::Union{Nothing,String}`: optional path where the generated plot should be saved as an image file (e.g. PNG). If not provided, the plot will be returned as a base64-encoded string in an ImageContent object. If provided, the path must be accessible with write permissions and must have a valid image file extension (e.g. .png or .svg).
+- `title::Union{Nothing,String}`: optional title for the plot. If not provided, no title will be displayed.
+- `x_axis_label::Union{Nothing,String}`: optional label for the x-axis. Defaults to the selected x-column name.
+- `y_axis_label::Union{Nothing,String}`: optional label for the y-axis. Defaults to the selected y-column name for single-series plots and no label for multi-series plots.
+- `colors::Vector{String}`: optional vector of color names. If not provided, a default color palette will be used. Supported color names are: "blue", "orange", "green", "purple", "lightblue", "red", and "yellow".
+- `with_legend::Bool`: whether to include a legend in the plot when multiple y-columns are specified. Default is true.
+"""
+function plot_box(path::String, xcolumn::String, ycolumns::Vector{String}; output_path::Union{Nothing,String}=nothing, title::Union{Nothing,String}=nothing, x_axis_label::Union{Nothing,String}=nothing, y_axis_label::Union{Nothing,String}=nothing, colors::Vector{String}=String[], with_legend::Bool=true)::Content
+    local tempfile = nothing
+    local palette = nothing
+
+    if !isvalidpath(path, "read")
+        return TextContent(; type="text", text="ERROR: access denied or invalid path: $path, you have only read permissions for the following directories: $(join(union(READ_ONLY_DIRECTORIES, READ_WRITE_DIRECTORIES), ", ", " and ")).")
+    elseif !isfile(path)
+        return TextContent(; type="text", text="ERROR: $path is not a file")
+    elseif !endswith(lowercase(path), ".csv")
+        return TextContent(; type="text", text="ERROR: file type not supported for plotting. Only CSV files are supported.")
+    elseif !isnothing(output_path) && !isvalidpath(output_path, "write")
+        return TextContent(; type="text", text="ERROR: access denied or invalid path: $output_path, you have only write permissions for the following directories: $(join(READ_WRITE_DIRECTORIES, ", ", " and ")).")
+    elseif !isnothing(output_path) && !(splitext(output_path)[2] in [".png", ".svg"])
+        return TextContent(; type="text", text="ERROR: file type not supported for plot output. Supported image formats are: .png and .svg.")
+    end
+
+    try
+        data = CSV.read(path, DataFrame; stripwhitespace=true, strict=true, stringtype=String)
+        if !(xcolumn in names(data))
+            return TextContent(; type="text", text="ERROR: x-column '$xcolumn' not found in CSV file.")
+        elseif isempty(ycolumns)
+            return TextContent(; type="text", text="ERROR: at least one y-column must be provided.")
+        elseif !all(ycol -> ycol in names(data), ycolumns)
+            return TextContent(; type="text", text="ERROR: one or more y-columns not found in CSV file.")
+        end
+
+        for ycol in ycolumns
+            data[!, ycol] = map(data[!, ycol]) do value
+                if ismissing(value)
+                    missing
+                elseif value isa Real
+                    Float64(value)
+                elseif value isa AbstractString
+                    tryparse(Float64, value)
+                else
+                    missing
+                end
+            end
+        end
+
+        xlabels = string.(data[!, xcolumn])
+        unique_xlabels = unique(xlabels)
+        xlookup = Dict(label => Float64(index) for (index, label) in enumerate(unique_xlabels))
+
+        if isempty(colors) || length(colors) != length(ycolumns)
+            c = Makie.wong_colors()
+            palette = [c[i] for i in 1:length(ycolumns)]
+        else
+            palette = [getcolor(color) for color in colors]
+        end
+
+        positions = Float64[]
+        values = Float64[]
+        groups = Int[]
+
+        for (group_index, ycol) in enumerate(ycolumns)
+            for row_index in 1:nrow(data)
+                yvalue = data[row_index, ycol]
+                xlabel = xlabels[row_index]
+                if !ismissing(yvalue) && !isnothing(yvalue) && haskey(xlookup, xlabel)
+                    push!(positions, xlookup[xlabel])
+                    push!(values, yvalue)
+                    push!(groups, group_index)
+                end
+            end
+        end
+
+        if isempty(values)
+            return TextContent(; type="text", text="ERROR: no numeric values found in the selected y-columns.")
+        end
+
+        fig = Figure(size=(1440, 900))
+        axis = Axis(
+            fig[1, 1];
+            xticks=(collect(1:length(unique_xlabels)), unique_xlabels),
+            xticklabelrotation=label_rotation(unique_xlabels),
+            xlabel=isnothing(x_axis_label) ? "" : x_axis_label,
+            ylabel=isnothing(y_axis_label) ? "" : y_axis_label,
+            title=isnothing(title) ? "" : title
+        )
+
+        if length(ycolumns) == 1
+            boxplot!(axis, positions, values; color=palette[1])
+        else
+            box_colors = [palette[group] for group in groups]
+            boxplot!(axis, positions, values; dodge=groups, n_dodge=length(ycolumns), color=box_colors)
+        end
+
+        if with_legend && length(ycolumns) > 1
+            legend_elements = [PolyElement(polycolor=palette[index]) for index in eachindex(ycolumns)]
+            Legend(fig[1, 2], legend_elements, ycolumns)
+        end
+
+        if isnothing(output_path)
+            tempfile = tempname() * ".png"
+            save(tempfile, fig)
+            data = downscale_image(tempfile)
+            return ImageContent(; type="image", data=data, mime_type="image/png")
+        else
+            save(output_path, fig)
+            return TextContent(; type="text", text="plot generated successfully and saved to $output_path")
+        end
+    catch error
+        return TextContent(; type="text", text="failed to generate plot: $error")
+    finally
+        if !isnothing(tempfile) && isfile(tempfile)
+            rm(tempfile, force=true)
+        end
+    end
+end
+
+
+function init_plot_box_tool(config::Dict)
+    plot_box_tool = MCPTool(
+        name="plot_box",
+        description="generates a box plot based on the data of a CSV table. Supports single-series and grouped multi-series box plots and can return the plot as image content or save it to an output image file.",
+        parameters=[
+            ToolParameter(
+                name = "path",
+                type = "str",
+                description = "the path to the CSV file containing the data to be plotted",
+                required = true
+            ),
+            ToolParameter(
+                name = "xcolumn",
+                type = "str",
+                description = "the column to use for grouping categories on the x-axis",
+                required = true
+            ),
+            ToolParameter(
+                name = "ycolumns",
+                type = "array",
+                description = "one or more numeric columns to plot as box plot distributions",
+                required = true
+            ),
+            ToolParameter(
+                name = "output_path",
+                type = "str",
+                description = "optional output image path (.png or .svg)",
+                required = false
+            ),
+            ToolParameter(
+                name = "title",
+                type = "str",
+                description = "optional plot title",
+                required = false
+            ),
+            ToolParameter(
+                name = "x_axis_label",
+                type = "str",
+                description = "optional label for the x-axis",
+                required = false
+            ),
+            ToolParameter(
+                name = "y_axis_label",
+                type = "str",
+                description = "optional label for the y-axis",
+                required = false
+            ),
+            ToolParameter(
+                name = "colors",
+                type = "array",
+                description = "optional vector of color names for the box plot series. Supported color names are: \"blue\", \"orange\", \"green\", \"purple\", \"lightblue\", \"red\", and \"yellow\". If not provided, a default color palette will be used.",
+                required = false
+            ),
+            ToolParameter(
+                name = "with_legend",
+                type = "bool",
+                description = "whether to include a legend when plotting multiple y-columns",
+                required = false
+            )
+        ],
+        handler = params -> plot_box(
+            params["path"],
+            params["xcolumn"],
+            String.(params["ycolumns"]);
+            output_path=get(params, "output_path", nothing),
+            title=get(params, "title", nothing),
+            x_axis_label=get(params, "x_axis_label", nothing),
+            y_axis_label=get(params, "y_axis_label", nothing),
+            colors=get(params, "colors", String[]),
+            with_legend=parse_bool(get(params, "with_legend", true), true)
+        )
+    )
+
+    TOOLS[plot_box_tool.name] = plot_box_tool
+end
+
+push!(INIT_FUNCTIONS, init_plot_box_tool)
 
 
 """
