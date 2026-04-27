@@ -177,6 +177,187 @@ function label_rotation(labels::Vector{String})::Float64
     end
 end
 
+const SUPPORTED_PLOT_OUTPUT_FORMATS = [".png", ".svg"]
+
+
+"""
+    validate_plot_request(path::String, output_path::Union{Nothing,String}=nothing)::Union{Nothing,TextContent}
+
+Validates the input parameters for a plot generation request. The function checks if the specified input file path is
+valid, accessible with read permissions, and points to a CSV file. If an output path is provided, it also checks if the
+path is valid, accessible with write permissions, and has a supported image file extension (e.g. .png or .svg). If any
+of the checks fail, a TextContent object containing an appropriate error message is returned. If all checks pass, the
+function returns `nothing`, indicating that the request is valid and can proceed with plot generation.
+"""
+function validate_plot_request(path::String, output_path::Union{Nothing,String}=nothing)::Union{Nothing,TextContent}
+    if !isvalidpath(path, "read")
+        return TextContent(; type="text", text="ERROR: access denied or invalid path: $path, you have only read permissions for the following directories: $(join(union(READ_ONLY_DIRECTORIES, READ_WRITE_DIRECTORIES), ", ", " and ")).")
+    elseif !isfile(path)
+        return TextContent(; type="text", text="ERROR: $path is not a file")
+    elseif !endswith(lowercase(path), ".csv")
+        return TextContent(; type="text", text="ERROR: file type not supported for plotting. Only CSV files are supported.")
+    elseif !isnothing(output_path) && !isvalidpath(output_path, "write")
+        return TextContent(; type="text", text="ERROR: access denied or invalid path: $output_path, you have only write permissions for the following directories: $(join(READ_WRITE_DIRECTORIES, ", ", " and ")).")
+    elseif !isnothing(output_path) && !(splitext(output_path)[2] in SUPPORTED_PLOT_OUTPUT_FORMATS)
+        return TextContent(; type="text", text="ERROR: file type not supported for plot output. Supported image formats are: .png and .svg.")
+    end
+
+    return nothing
+end
+
+
+"""
+    load_plot_table(path::String)::DataFrame
+
+Loads a CSV file from the specified path into a DataFrame for plotting. The function reads the CSV file using the CSV.jl
+package, with options to strip whitespace from string fields, enforce strict parsing to catch any formatting issues,
+and treat all string fields as String type to prevent automatic type inference that could lead to unexpected data types.
+If the file cannot be read or is not a valid CSV file, an error will be thrown.
+"""
+function load_plot_table(path::String)::DataFrame
+    return CSV.read(path, DataFrame; stripwhitespace=true, strict=true, stringtype=String)
+end
+
+
+"""
+    coerce_numeric_values(values)
+
+Coerces a vector of values to Float64 where possible. For each value in the input vector, the function checks if it is
+missing, a real number, or a string that can be parsed as a float. If the value is missing or cannot be coerced to a
+float, it is returned as `missing`. Otherwise, the coerced float value is returned. The result is a new vector of the
+same length with values converted to Float64 where possible and `missing` for non-coercible values.
+"""
+function coerce_numeric_values(values)
+    return map(values) do value
+        if ismissing(value)
+            missing
+        elseif value isa Real
+            Float64(value)
+        elseif value isa AbstractString
+            tryparse(Float64, value)
+        else
+            missing
+        end
+    end
+end
+
+"""
+    coerce_numeric_columns!(data::DataFrame, columns::Vector{String})
+
+Coerces the specified columns of a DataFrame to numeric values in-place. For each column name in the `columns` vector,
+the function applies the `coerce_numeric_values` function to the corresponding column in the DataFrame, replacing the
+original values with their coerced numeric versions. This allows for consistent numeric data types in the specified
+columns, which is important for accurate plotting and analysis. The function modifies the input DataFrame directly
+and does not return a value.
+"""
+function coerce_numeric_columns!(data::DataFrame, columns::Vector{String})
+    for column in unique(columns)
+        data[!, column] = coerce_numeric_values(data[!, column])
+    end
+end
+
+
+"""
+    collect_numeric_values(values)::Vector{Float64}
+
+Collects numeric values from a vector, filtering out any missing or non-numeric entries. The function iterates through
+the input `values` vector and checks each value to determine if it is not missing and not nothing. If a value passes
+this check, it is converted to a Float64 and included in the resulting vector. The output is a new vector containing
+only the valid numeric values as Float64, which can be used for plotting or further analysis.
+"""
+function collect_numeric_values(values)::Vector{Float64}
+    return [Float64(value) for value in values if !ismissing(value) && !isnothing(value)]
+end
+
+
+"""
+    resolve_plot_palette(colors::Vector{String}, series_count::Int)
+
+Resolves a color palette for plotting based on the provided vector of color names and the number of series to be
+plotted. If the `colors` vector is empty or its length does not match the `series_count`, a default color palette is
+generated using the `Makie.wong_colors()` function, which provides a set of visually distinct colors.
+"""
+function resolve_plot_palette(colors::Vector{String}, series_count::Int)
+    if series_count <= 0
+        return Any[]
+    elseif isempty(colors) || length(colors) != series_count
+        base_palette = Makie.wong_colors()
+        return [base_palette[mod1(index, length(base_palette))] for index in 1:series_count]
+    else
+        return [getcolor(color) for color in colors]
+    end
+end
+
+"""
+    resolve_heatmap_colormap(colors::Vector{String})
+
+Resolves a colormap for heatmap plots based on the provided vector of color names. If the input vector is empty, the
+function returns the default :viridis colormap. If specific color names are provided, it constructs a custom colormap
+using those colors. The function uses the `getcolor` function to convert color names to their corresponding color values
+and creates a gradient colormap with `Makie.cgrad`. This allows for flexible customization of heatmap colors while
+providing a sensible default when no colors are specified.
+"""
+function resolve_heatmap_colormap(colors::Vector{String})
+    if isempty(colors)
+        return :viridis
+    end
+
+    return Makie.cgrad([getcolor(color) for color in colors])
+end
+
+
+"""
+    save_plot_content(fig::Figure, output_path::Union{Nothing,String}=nothing)::Content
+
+Saves a Makie figure to an image file or returns it as base64-encoded image content. If `output_path` is provided,
+the figure is saved to the specified path and a success message is returned. If `output_path` is not provided, the
+figure is saved to a temporary PNG file, downscaled for efficient encoding, and returned as an ImageContent object
+with the image data encoded in base64 format. The function ensures that any temporary files created during the
+process are removed after use to prevent clutter and manage resources effectively.
+"""
+function save_plot_content(fig::Figure, output_path::Union{Nothing,String}=nothing)::Content
+    tempfile = nothing
+
+    try
+        if isnothing(output_path)
+            tempfile = tempname() * ".png"
+            save(tempfile, fig)
+            data = downscale_image(tempfile)
+            return ImageContent(; type="image", data=data, mime_type="image/png")
+        else
+            save(output_path, fig)
+            return TextContent(; type="text", text="plot generated successfully and saved to $output_path")
+        end
+    finally
+        if !isnothing(tempfile) && isfile(tempfile)
+            rm(tempfile, force=true)
+        end
+    end
+end
+
+
+"""
+    parse_optional_int(input)::Union{Nothing,Int}
+
+Parses an optional integer value from the input. If the input is `nothing`, the function returns `nothing`. If the input
+is an integer, it is returned as an `Int`. If the input is a string, the function attempts to parse it as an integer; if
+parsing fails, it returns 0. For any other input types, the function also returns 0. This utility function allows for
+flexible handling of optional integer parameters that may be provided in different formats.
+"""
+function parse_optional_int(input)::Union{Nothing,Int}
+    if isnothing(input)
+        return nothing
+    elseif input isa Integer
+        return Int(input)
+    elseif input isa AbstractString
+        parsed = tryparse(Int, input)
+        return isnothing(parsed) ? 0 : parsed
+    else
+        return 0
+    end
+end
+
+
 """
     plot_bar(path::String, xcolumn::String, ycolumns::Vector{String}; output_path::Union{Nothing,String}=nothing, title::Union{Nothing,String}=nothing, x_axis_label::Union{Nothing,String}=nothing, y_axis_label::Union{Nothing,String}=nothing, with_legend::Bool=true, stacked::Bool=false)::Content
 
@@ -195,23 +376,13 @@ Arguments:
 - `stacked::Bool`: whether to create a stacked bar plot when multiple y-columns are specified. Default is false (grouped bar plot).
 """
 function plot_bar(path::String, xcolumn::String, ycolumns::Vector{String}; output_path::Union{Nothing,String}=nothing, title::Union{Nothing,String}=nothing, x_axis_label::Union{Nothing,String}=nothing, y_axis_label::Union{Nothing,String}=nothing, colors::Vector{String}=String[], with_legend::Bool=true, stacked::Bool=false)::Content
-    local tempfile = nothing
-    local palette = nothing
-
-    if !isvalidpath(path, "read")
-        return TextContent(; type="text", text="ERROR: access denied or invalid path: $path, you have only read permissions for the following directories: $(join(union(READ_ONLY_DIRECTORIES, READ_WRITE_DIRECTORIES), ", ", " and ")).")
-    elseif !isfile(path)
-        return TextContent(; type="text", text="ERROR: $path is not a file")
-    elseif !endswith(lowercase(path), ".csv")
-        return TextContent(; type="text", text="ERROR: file type not supported for plotting. Only CSV files are supported.")
-    elseif !isnothing(output_path) && !isvalidpath(output_path, "write")
-        return TextContent(; type="text", text="ERROR: access denied or invalid path: $output_path, you have only write permissions for the following directories: $(join(READ_WRITE_DIRECTORIES, ", ", " and ")).")
-    elseif !isnothing(output_path) && !(splitext(output_path)[2] in [".png", ".svg"])
-        return TextContent(; type="text", text="ERROR: file type not supported for plot output. Supported image formats are: .png and .svg.")
+    validation_error = validate_plot_request(path, output_path)
+    if !isnothing(validation_error)
+        return validation_error
     end
 
     try
-        data = CSV.read(path, DataFrame; stripwhitespace=true, strict=true, stringtype=String)
+        data = load_plot_table(path)
         if !(xcolumn in names(data))
             return TextContent(; type="text", text="ERROR: x-column '$xcolumn' not found in CSV file.")
         elseif isempty(ycolumns)
@@ -220,20 +391,7 @@ function plot_bar(path::String, xcolumn::String, ycolumns::Vector{String}; outpu
             return TextContent(; type="text", text="ERROR: one or more y-columns not found in CSV file.")
         end
 
-        # convert y-columns to numeric, non-convertible values will be set to missing
-        for ycol in ycolumns
-            data[!, ycol] = map(data[!, ycol]) do value
-                if ismissing(value)
-                    missing
-                elseif value isa Real
-                    Float64(value)
-                elseif value isa AbstractString
-                    tryparse(Float64, value)
-                else
-                    missing
-                end
-            end
-        end
+        coerce_numeric_columns!(data, ycolumns)
 
         # create plot
         xlabels = string.(data[!, xcolumn])
@@ -267,14 +425,7 @@ function plot_bar(path::String, xcolumn::String, ycolumns::Vector{String}; outpu
             title=isnothing(title) ? "" : title
         )
 
-        # set colors
-        if isempty(colors) || length(colors) != length(ycolumns)
-            # set default colors
-            c = Makie.wong_colors()
-            palette = [c[i] for i in 1:length(ycolumns)]
-        else
-            palette = [getcolor(color) for color in colors]
-        end
+        palette = resolve_plot_palette(colors, length(ycolumns))
         bar_colors = length(ycolumns) == 1 ? palette[1] : [palette[group] for group in groups]
 
         plot = if length(ycolumns) == 1
@@ -291,23 +442,9 @@ function plot_bar(path::String, xcolumn::String, ycolumns::Vector{String}; outpu
             Legend(fig[1, 2], legend_elements, group_labels)
         end
 
-        if isnothing(output_path)
-            # return plot as base64-encoded string
-            tempfile = tempname() * ".png"
-            save(tempfile, fig)
-            data = downscale_image(tempfile)
-            return ImageContent(; type="image", data=data, mime_type="image/png")
-        else
-            # save plot to specified path
-            save(output_path, fig)
-            return TextContent(; type="text", text="plot generated successfully and saved to $output_path")
-        end
+        return save_plot_content(fig, output_path)
     catch error
         return TextContent(; type="text", text="failed to generate plot: $error")
-    finally
-        if !isnothing(tempfile) && isfile(tempfile)
-            rm(tempfile, force=true)
-        end
     end
 
 end
@@ -416,23 +553,13 @@ Arguments:
 - `with_legend::Bool`: whether to include a legend in the plot when multiple y-columns are specified. Default is true.
 """
 function plot_line(path::String, xcolumn::String, ycolumns::Vector{String}; output_path::Union{Nothing,String}=nothing, title::Union{Nothing,String}=nothing, x_axis_label::Union{Nothing,String}=nothing, y_axis_label::Union{Nothing,String}=nothing, colors::Vector{String}=String[], with_legend::Bool=true)::Content
-    local tempfile = nothing
-    local palette = nothing
-
-    if !isvalidpath(path, "read")
-        return TextContent(; type="text", text="ERROR: access denied or invalid path: $path, you have only read permissions for the following directories: $(join(union(READ_ONLY_DIRECTORIES, READ_WRITE_DIRECTORIES), ", ", " and ")).")
-    elseif !isfile(path)
-        return TextContent(; type="text", text="ERROR: $path is not a file")
-    elseif !endswith(lowercase(path), ".csv")
-        return TextContent(; type="text", text="ERROR: file type not supported for plotting. Only CSV files are supported.")
-    elseif !isnothing(output_path) && !isvalidpath(output_path, "write")
-        return TextContent(; type="text", text="ERROR: access denied or invalid path: $output_path, you have only write permissions for the following directories: $(join(READ_WRITE_DIRECTORIES, ", ", " and ")).")
-    elseif !isnothing(output_path) && !(splitext(output_path)[2] in [".png", ".svg"])
-        return TextContent(; type="text", text="ERROR: file type not supported for plot output. Supported image formats are: .png and .svg.")
+    validation_error = validate_plot_request(path, output_path)
+    if !isnothing(validation_error)
+        return validation_error
     end
 
     try
-        data = CSV.read(path, DataFrame; stripwhitespace=true, strict=true, stringtype=String)
+        data = load_plot_table(path)
         if !(xcolumn in names(data))
             return TextContent(; type="text", text="ERROR: x-column '$xcolumn' not found in CSV file.")
         elseif isempty(ycolumns)
@@ -441,41 +568,14 @@ function plot_line(path::String, xcolumn::String, ycolumns::Vector{String}; outp
             return TextContent(; type="text", text="ERROR: one or more y-columns not found in CSV file.")
         end
 
-        for ycol in ycolumns
-            data[!, ycol] = map(data[!, ycol]) do value
-                if ismissing(value)
-                    missing
-                elseif value isa Real
-                    Float64(value)
-                elseif value isa AbstractString
-                    tryparse(Float64, value)
-                else
-                    missing
-                end
-            end
-        end
+        coerce_numeric_columns!(data, ycolumns)
 
-        parsed_xvalues = map(data[!, xcolumn]) do value
-            if ismissing(value)
-                missing
-            elseif value isa Real
-                Float64(value)
-            elseif value isa AbstractString
-                tryparse(Float64, value)
-            else
-                missing
-            end
-        end
+        parsed_xvalues = coerce_numeric_values(data[!, xcolumn])
         xlabels = string.(data[!, xcolumn])
         use_numeric_x = all(value -> !ismissing(value) && !isnothing(value), parsed_xvalues)
         xvalues = use_numeric_x ? Float64.(parsed_xvalues) : collect(1:nrow(data))
 
-        if isempty(colors) || length(colors) != length(ycolumns)
-            c = Makie.wong_colors()
-            palette = [c[i] for i in 1:length(ycolumns)]
-        else
-            palette = [getcolor(color) for color in colors]
-        end
+        palette = resolve_plot_palette(colors, length(ycolumns))
 
         fig = Figure(size=(1440, 900))
         axis = Axis(
@@ -518,21 +618,9 @@ function plot_line(path::String, xcolumn::String, ycolumns::Vector{String}; outp
             Legend(fig[1, 2], legend_elements, ycolumns)
         end
 
-        if isnothing(output_path)
-            tempfile = tempname() * ".png"
-            save(tempfile, fig)
-            data = downscale_image(tempfile)
-            return ImageContent(; type="image", data=data, mime_type="image/png")
-        else
-            save(output_path, fig)
-            return TextContent(; type="text", text="plot generated successfully and saved to $output_path")
-        end
+        return save_plot_content(fig, output_path)
     catch error
         return TextContent(; type="text", text="failed to generate plot: $error")
-    finally
-        if !isnothing(tempfile) && isfile(tempfile)
-            rm(tempfile, force=true)
-        end
     end
 end
 
@@ -633,23 +721,13 @@ Arguments:
 - `with_legend::Bool`: whether to include a legend in the plot when multiple y-columns are specified. Default is true.
 """
 function plot_box(path::String, xcolumn::String, ycolumns::Vector{String}; output_path::Union{Nothing,String}=nothing, title::Union{Nothing,String}=nothing, x_axis_label::Union{Nothing,String}=nothing, y_axis_label::Union{Nothing,String}=nothing, colors::Vector{String}=String[], with_legend::Bool=true)::Content
-    local tempfile = nothing
-    local palette = nothing
-
-    if !isvalidpath(path, "read")
-        return TextContent(; type="text", text="ERROR: access denied or invalid path: $path, you have only read permissions for the following directories: $(join(union(READ_ONLY_DIRECTORIES, READ_WRITE_DIRECTORIES), ", ", " and ")).")
-    elseif !isfile(path)
-        return TextContent(; type="text", text="ERROR: $path is not a file")
-    elseif !endswith(lowercase(path), ".csv")
-        return TextContent(; type="text", text="ERROR: file type not supported for plotting. Only CSV files are supported.")
-    elseif !isnothing(output_path) && !isvalidpath(output_path, "write")
-        return TextContent(; type="text", text="ERROR: access denied or invalid path: $output_path, you have only write permissions for the following directories: $(join(READ_WRITE_DIRECTORIES, ", ", " and ")).")
-    elseif !isnothing(output_path) && !(splitext(output_path)[2] in [".png", ".svg"])
-        return TextContent(; type="text", text="ERROR: file type not supported for plot output. Supported image formats are: .png and .svg.")
+    validation_error = validate_plot_request(path, output_path)
+    if !isnothing(validation_error)
+        return validation_error
     end
 
     try
-        data = CSV.read(path, DataFrame; stripwhitespace=true, strict=true, stringtype=String)
+        data = load_plot_table(path)
         if !(xcolumn in names(data))
             return TextContent(; type="text", text="ERROR: x-column '$xcolumn' not found in CSV file.")
         elseif isempty(ycolumns)
@@ -658,30 +736,13 @@ function plot_box(path::String, xcolumn::String, ycolumns::Vector{String}; outpu
             return TextContent(; type="text", text="ERROR: one or more y-columns not found in CSV file.")
         end
 
-        for ycol in ycolumns
-            data[!, ycol] = map(data[!, ycol]) do value
-                if ismissing(value)
-                    missing
-                elseif value isa Real
-                    Float64(value)
-                elseif value isa AbstractString
-                    tryparse(Float64, value)
-                else
-                    missing
-                end
-            end
-        end
+        coerce_numeric_columns!(data, ycolumns)
 
         xlabels = string.(data[!, xcolumn])
         unique_xlabels = unique(xlabels)
         xlookup = Dict(label => Float64(index) for (index, label) in enumerate(unique_xlabels))
 
-        if isempty(colors) || length(colors) != length(ycolumns)
-            c = Makie.wong_colors()
-            palette = [c[i] for i in 1:length(ycolumns)]
-        else
-            palette = [getcolor(color) for color in colors]
-        end
+        palette = resolve_plot_palette(colors, length(ycolumns))
 
         positions = Float64[]
         values = Float64[]
@@ -725,21 +786,9 @@ function plot_box(path::String, xcolumn::String, ycolumns::Vector{String}; outpu
             Legend(fig[1, 2], legend_elements, ycolumns)
         end
 
-        if isnothing(output_path)
-            tempfile = tempname() * ".png"
-            save(tempfile, fig)
-            data = downscale_image(tempfile)
-            return ImageContent(; type="image", data=data, mime_type="image/png")
-        else
-            save(output_path, fig)
-            return TextContent(; type="text", text="plot generated successfully and saved to $output_path")
-        end
+        return save_plot_content(fig, output_path)
     catch error
         return TextContent(; type="text", text="failed to generate plot: $error")
-    finally
-        if !isnothing(tempfile) && isfile(tempfile)
-            rm(tempfile, force=true)
-        end
     end
 end
 
@@ -821,6 +870,556 @@ function init_plot_box_tool(config::Dict)
 end
 
 push!(INIT_FUNCTIONS, init_plot_box_tool)
+
+
+"""
+    plot_scatter(path::String, xcolumns::Vector{String}, ycolumns::Vector{String}; output_path::Union{Nothing,String}=nothing, title::Union{Nothing,String}=nothing, x_axis_label::Union{Nothing,String}=nothing, y_axis_label::Union{Nothing,String}=nothing, colors::Vector{String}=String[], with_legend::Bool=true)::Content
+
+Generates a scatter plot from a CSV file at the specified path.
+"""
+function plot_scatter(path::String, xcolumns::Vector{String}, ycolumns::Vector{String}; output_path::Union{Nothing,String}=nothing, title::Union{Nothing,String}=nothing, x_axis_label::Union{Nothing,String}=nothing, y_axis_label::Union{Nothing,String}=nothing, colors::Vector{String}=String[], with_legend::Bool=true)::Content
+    validation_error = validate_plot_request(path, output_path)
+    if !isnothing(validation_error)
+        return validation_error
+    elseif isempty(xcolumns) || isempty(ycolumns)
+        return TextContent(; type="text", text="ERROR: at least one x/y-column pair must be provided.")
+    elseif length(xcolumns) != length(ycolumns)
+        return TextContent(; type="text", text="ERROR: xcolumns and ycolumns must have the same number of entries.")
+    end
+
+    try
+        data = load_plot_table(path)
+        selected_columns = unique(vcat(xcolumns, ycolumns))
+        if !all(column -> column in names(data), selected_columns)
+            return TextContent(; type="text", text="ERROR: one or more x/y-columns not found in CSV file.")
+        end
+
+        coerce_numeric_columns!(data, selected_columns)
+        palette = resolve_plot_palette(colors, length(xcolumns))
+
+        fig = Figure(size=(1440, 900))
+        axis = Axis(
+            fig[1, 1];
+            xlabel=isnothing(x_axis_label) ? "" : x_axis_label,
+            ylabel=isnothing(y_axis_label) ? "" : y_axis_label,
+            title=isnothing(title) ? "" : title
+        )
+
+        plotted_series = Any[]
+        series_labels = String[]
+
+        for (index, (xcolumn_name, ycolumn_name)) in enumerate(zip(xcolumns, ycolumns))
+            points_x = Float64[]
+            points_y = Float64[]
+
+            for row_index in 1:nrow(data)
+                xvalue = data[row_index, xcolumn_name]
+                yvalue = data[row_index, ycolumn_name]
+                if !ismissing(xvalue) && !isnothing(xvalue) && !ismissing(yvalue) && !isnothing(yvalue)
+                    push!(points_x, Float64(xvalue))
+                    push!(points_y, Float64(yvalue))
+                end
+            end
+
+            if !isempty(points_x)
+                series_label = ycolumn_name == xcolumn_name ? ycolumn_name : "$ycolumn_name vs $xcolumn_name"
+                push!(plotted_series, scatter!(axis, points_x, points_y; color=palette[index], markersize=14, label=series_label))
+                push!(series_labels, series_label)
+            end
+        end
+
+        if isempty(plotted_series)
+            return TextContent(; type="text", text="ERROR: no numeric x/y pairs found in the selected columns.")
+        end
+
+        if with_legend && length(plotted_series) > 1
+            Legend(fig[1, 2], plotted_series, series_labels)
+        end
+
+        return save_plot_content(fig, output_path)
+    catch error
+        return TextContent(; type="text", text="failed to generate plot: $error")
+    end
+end
+
+
+function init_plot_scatter_tool(config::Dict)
+    plot_scatter_tool = MCPTool(
+        name="plot_scatter",
+        description="generates a scatter plot based on parallel x-column and y-column series from a CSV table and can return the plot as image content or save it to an output image file.",
+        parameters=[
+            ToolParameter(
+                name = "path",
+                type = "str",
+                description = "the path to the CSV file containing the data to be plotted",
+                required = true
+            ),
+            ToolParameter(
+                name = "xcolumns",
+                type = "array",
+                description = "one or more numeric columns to use as x-values; each entry pairs with the y-column at the same index",
+                required = true
+            ),
+            ToolParameter(
+                name = "ycolumns",
+                type = "array",
+                description = "one or more numeric columns to use as y-values; each entry pairs with the x-column at the same index",
+                required = true
+            ),
+            ToolParameter(
+                name = "output_path",
+                type = "str",
+                description = "optional output image path (.png or .svg)",
+                required = false
+            ),
+            ToolParameter(
+                name = "title",
+                type = "str",
+                description = "optional plot title",
+                required = false
+            ),
+            ToolParameter(
+                name = "x_axis_label",
+                type = "str",
+                description = "optional label for the x-axis",
+                required = false
+            ),
+            ToolParameter(
+                name = "y_axis_label",
+                type = "str",
+                description = "optional label for the y-axis",
+                required = false
+            ),
+            ToolParameter(
+                name = "colors",
+                type = "array",
+                description = "optional vector of color names for the scatter series. Supported color names are: \"blue\", \"orange\", \"green\", \"purple\", \"lightblue\", \"red\", and \"yellow\". If not provided, a default color palette will be used.",
+                required = false
+            ),
+            ToolParameter(
+                name = "with_legend",
+                type = "bool",
+                description = "whether to include a legend when plotting multiple series",
+                required = false
+            )
+        ],
+        handler = params -> plot_scatter(
+            params["path"],
+            String.(params["xcolumns"]),
+            String.(params["ycolumns"]);
+            output_path=get(params, "output_path", nothing),
+            title=get(params, "title", nothing),
+            x_axis_label=get(params, "x_axis_label", nothing),
+            y_axis_label=get(params, "y_axis_label", nothing),
+            colors=get(params, "colors", String[]),
+            with_legend=parse_bool(get(params, "with_legend", true), true)
+        )
+    )
+
+    TOOLS[plot_scatter_tool.name] = plot_scatter_tool
+end
+
+push!(INIT_FUNCTIONS, init_plot_scatter_tool)
+
+
+"""
+    plot_hist(path::String, column::String; bins::Union{Nothing,Int}=nothing, output_path::Union{Nothing,String}=nothing, title::Union{Nothing,String}=nothing, x_axis_label::Union{Nothing,String}=nothing, y_axis_label::Union{Nothing,String}=nothing, colors::Vector{String}=String[])::Content
+
+Generates a histogram from a CSV file at the specified path.
+"""
+function plot_hist(path::String, column::String; bins::Union{Nothing,Int}=nothing, output_path::Union{Nothing,String}=nothing, title::Union{Nothing,String}=nothing, x_axis_label::Union{Nothing,String}=nothing, y_axis_label::Union{Nothing,String}=nothing, colors::Vector{String}=String[])::Content
+    validation_error = validate_plot_request(path, output_path)
+    if !isnothing(validation_error)
+        return validation_error
+    elseif !isnothing(bins) && bins <= 0
+        return TextContent(; type="text", text="ERROR: bins must be a positive integer.")
+    end
+
+    try
+        data = load_plot_table(path)
+        if !(column in names(data))
+            return TextContent(; type="text", text="ERROR: column '$column' not found in CSV file.")
+        end
+
+        data[!, column] = coerce_numeric_values(data[!, column])
+        values = collect_numeric_values(data[!, column])
+        if isempty(values)
+            return TextContent(; type="text", text="ERROR: no numeric values found in the selected column.")
+        end
+
+        palette = resolve_plot_palette(colors, 1)
+        fig = Figure(size=(1440, 900))
+        axis = Axis(
+            fig[1, 1];
+            xlabel=isnothing(x_axis_label) ? "" : x_axis_label,
+            ylabel=isnothing(y_axis_label) ? "" : y_axis_label,
+            title=isnothing(title) ? "" : title
+        )
+
+        if isnothing(bins)
+            hist!(axis, values; color=palette[1], strokecolor=:black, strokewidth=1)
+        else
+            hist!(axis, values; bins=bins, color=palette[1], strokecolor=:black, strokewidth=1)
+        end
+
+        return save_plot_content(fig, output_path)
+    catch error
+        return TextContent(; type="text", text="failed to generate plot: $error")
+    end
+end
+
+
+function init_plot_hist_tool(config::Dict)
+    plot_hist_tool = MCPTool(
+        name="plot_hist",
+        description="generates a histogram based on a numeric column of a CSV table and can return the plot as image content or save it to an output image file.",
+        parameters=[
+            ToolParameter(
+                name = "path",
+                type = "str",
+                description = "the path to the CSV file containing the data to be plotted",
+                required = true
+            ),
+            ToolParameter(
+                name = "column",
+                type = "str",
+                description = "the numeric column to use for histogram values",
+                required = true
+            ),
+            ToolParameter(
+                name = "bins",
+                type = "int",
+                description = "optional number of histogram bins",
+                required = false
+            ),
+            ToolParameter(
+                name = "output_path",
+                type = "str",
+                description = "optional output image path (.png or .svg)",
+                required = false
+            ),
+            ToolParameter(
+                name = "title",
+                type = "str",
+                description = "optional plot title",
+                required = false
+            ),
+            ToolParameter(
+                name = "x_axis_label",
+                type = "str",
+                description = "optional label for the x-axis",
+                required = false
+            ),
+            ToolParameter(
+                name = "y_axis_label",
+                type = "str",
+                description = "optional label for the y-axis",
+                required = false
+            ),
+            ToolParameter(
+                name = "colors",
+                type = "array",
+                description = "optional vector of color names for the histogram bars. Supported color names are: \"blue\", \"orange\", \"green\", \"purple\", \"lightblue\", \"red\", and \"yellow\". If not provided, a default color palette will be used.",
+                required = false
+            )
+        ],
+        handler = params -> plot_hist(
+            params["path"],
+            params["column"];
+            bins=parse_optional_int(get(params, "bins", nothing)),
+            output_path=get(params, "output_path", nothing),
+            title=get(params, "title", nothing),
+            x_axis_label=get(params, "x_axis_label", nothing),
+            y_axis_label=get(params, "y_axis_label", nothing),
+            colors=get(params, "colors", String[])
+        )
+    )
+
+    TOOLS[plot_hist_tool.name] = plot_hist_tool
+end
+
+push!(INIT_FUNCTIONS, init_plot_hist_tool)
+
+
+"""
+    plot_pie(path::String, labels_column::String, values_column::String; output_path::Union{Nothing,String}=nothing, title::Union{Nothing,String}=nothing, colors::Vector{String}=String[], with_legend::Bool=true)::Content
+
+Generates a pie chart from a CSV file at the specified path.
+"""
+function plot_pie(path::String, labels_column::String, values_column::String; output_path::Union{Nothing,String}=nothing, title::Union{Nothing,String}=nothing, colors::Vector{String}=String[], with_legend::Bool=true)::Content
+    validation_error = validate_plot_request(path, output_path)
+    if !isnothing(validation_error)
+        return validation_error
+    end
+
+    try
+        data = load_plot_table(path)
+        if !(labels_column in names(data))
+            return TextContent(; type="text", text="ERROR: labels column '$labels_column' not found in CSV file.")
+        elseif !(values_column in names(data))
+            return TextContent(; type="text", text="ERROR: values column '$values_column' not found in CSV file.")
+        end
+
+        data[!, values_column] = coerce_numeric_values(data[!, values_column])
+        values = Float64[]
+        labels = String[]
+
+        for row_index in 1:nrow(data)
+            label_value = data[row_index, labels_column]
+            numeric_value = data[row_index, values_column]
+            if ismissing(label_value) || isnothing(label_value)
+                continue
+            elseif ismissing(numeric_value) || isnothing(numeric_value) || numeric_value <= 0
+                return TextContent(; type="text", text="ERROR: pie chart values must be positive numeric values.")
+            end
+
+            push!(labels, string(label_value))
+            push!(values, Float64(numeric_value))
+        end
+
+        if isempty(values)
+            return TextContent(; type="text", text="ERROR: no positive numeric values found for the selected pie chart columns.")
+        end
+
+        palette = resolve_plot_palette(colors, length(values))
+
+        fig = Figure(size=(1440, 900))
+        axis = Axis(fig[1, 1]; title=isnothing(title) ? "" : title, autolimitaspect=1)
+        hidedecorations!(axis)
+        hidespines!(axis)
+        pie!(axis, values; color=palette, strokecolor=:white, strokewidth=2, radius=2)
+
+        if with_legend
+            legend_elements = [PolyElement(polycolor=palette[index], strokecolor=:white, strokewidth=1) for index in eachindex(labels)]
+            Legend(fig[1, 2], legend_elements, labels)
+        end
+
+        return save_plot_content(fig, output_path)
+    catch error
+        return TextContent(; type="text", text="failed to generate plot: $error")
+    end
+end
+
+
+function init_plot_pie_tool(config::Dict)
+    plot_pie_tool = MCPTool(
+        name="plot_pie",
+        description="generates a pie chart based on a label column and a numeric values column from a CSV table and can return the plot as image content or save it to an output image file.",
+        parameters=[
+            ToolParameter(
+                name = "path",
+                type = "str",
+                description = "the path to the CSV file containing the data to be plotted",
+                required = true
+            ),
+            ToolParameter(
+                name = "labels_column",
+                type = "str",
+                description = "the column that provides the pie slice labels",
+                required = true
+            ),
+            ToolParameter(
+                name = "values_column",
+                type = "str",
+                description = "the numeric column that provides the pie slice values",
+                required = true
+            ),
+            ToolParameter(
+                name = "output_path",
+                type = "str",
+                description = "optional output image path (.png or .svg)",
+                required = false
+            ),
+            ToolParameter(
+                name = "title",
+                type = "str",
+                description = "optional plot title",
+                required = false
+            ),
+            ToolParameter(
+                name = "colors",
+                type = "array",
+                description = "optional vector of color names for the pie slices. Supported color names are: \"blue\", \"orange\", \"green\", \"purple\", \"lightblue\", \"red\", and \"yellow\". If not provided, a default color palette will be used.",
+                required = false
+            ),
+            ToolParameter(
+                name = "with_legend",
+                type = "bool",
+                description = "whether to include a legend for the pie slices",
+                required = false
+            )
+        ],
+        handler = params -> plot_pie(
+            params["path"],
+            params["labels_column"],
+            params["values_column"];
+            output_path=get(params, "output_path", nothing),
+            title=get(params, "title", nothing),
+            colors=get(params, "colors", String[]),
+            with_legend=parse_bool(get(params, "with_legend", true), true)
+        )
+    )
+
+    TOOLS[plot_pie_tool.name] = plot_pie_tool
+end
+
+push!(INIT_FUNCTIONS, init_plot_pie_tool)
+
+
+"""
+    plot_heatmap(path::String, xcolumn::String, ycolumn::String, value_column::String; output_path::Union{Nothing,String}=nothing, title::Union{Nothing,String}=nothing, x_axis_label::Union{Nothing,String}=nothing, y_axis_label::Union{Nothing,String}=nothing, colors::Vector{String}=String[])::Content
+
+Generates a heatmap from a CSV file at the specified path.
+"""
+function plot_heatmap(path::String, xcolumn::String, ycolumn::String, value_column::String; output_path::Union{Nothing,String}=nothing, title::Union{Nothing,String}=nothing, x_axis_label::Union{Nothing,String}=nothing, y_axis_label::Union{Nothing,String}=nothing, colors::Vector{String}=String[])::Content
+    validation_error = validate_plot_request(path, output_path)
+    if !isnothing(validation_error)
+        return validation_error
+    end
+
+    try
+        data = load_plot_table(path)
+        if !(xcolumn in names(data))
+            return TextContent(; type="text", text="ERROR: x-column '$xcolumn' not found in CSV file.")
+        elseif !(ycolumn in names(data))
+            return TextContent(; type="text", text="ERROR: y-column '$ycolumn' not found in CSV file.")
+        elseif !(value_column in names(data))
+            return TextContent(; type="text", text="ERROR: value column '$value_column' not found in CSV file.")
+        end
+
+        data[!, value_column] = coerce_numeric_values(data[!, value_column])
+
+        xlabels = unique(string.(data[!, xcolumn]))
+        ylabels = unique(string.(data[!, ycolumn]))
+        xlookup = Dict(label => index for (index, label) in enumerate(xlabels))
+        ylookup = Dict(label => index for (index, label) in enumerate(ylabels))
+        value_matrix = fill(NaN, length(xlabels), length(ylabels))
+        value_counts = Dict{Tuple{String, String}, Int}()
+
+        for row_index in 1:nrow(data)
+            xvalue = data[row_index, xcolumn]
+            yvalue = data[row_index, ycolumn]
+            numeric_value = data[row_index, value_column]
+
+            if ismissing(xvalue) || isnothing(xvalue) || ismissing(yvalue) || isnothing(yvalue) || ismissing(numeric_value) || isnothing(numeric_value)
+                continue
+            end
+
+            xindex = xlookup[string(xvalue)]
+            yindex = ylookup[string(yvalue)]
+            key = (string(xvalue), string(yvalue))
+            if isnan(value_matrix[xindex, yindex])
+                value_matrix[xindex, yindex] = Float64(numeric_value)
+                value_counts[key] = 1
+            else
+                count = get(value_counts, key, 1)
+                value_matrix[xindex, yindex] = ((value_matrix[xindex, yindex] * count) + Float64(numeric_value)) / (count + 1)
+                value_counts[key] = count + 1
+            end
+        end
+
+        if all(isnan, value_matrix)
+            return TextContent(; type="text", text="ERROR: no numeric values found in the selected value column.")
+        end
+
+        fig = Figure(size=(1440, 900))
+        axis = Axis(
+            fig[1, 1];
+            xticks=(collect(1:length(xlabels)), xlabels),
+            yticks=(collect(1:length(ylabels)), ylabels),
+            xticklabelrotation=label_rotation(xlabels),
+            xlabel=isnothing(x_axis_label) ? "" : x_axis_label,
+            ylabel=isnothing(y_axis_label) ? "" : y_axis_label,
+            title=isnothing(title) ? "" : title
+        )
+
+        heatmap_plot = heatmap!(axis, collect(1:length(xlabels)), collect(1:length(ylabels)), value_matrix; colormap=resolve_heatmap_colormap(colors))
+        Colorbar(fig[1, 2], heatmap_plot, label=value_column)
+
+        return save_plot_content(fig, output_path)
+    catch error
+        return TextContent(; type="text", text="failed to generate plot: $error")
+    end
+end
+
+
+function init_plot_heatmap_tool(config::Dict)
+    plot_heatmap_tool = MCPTool(
+        name="plot_heatmap",
+        description="generates a heatmap based on categorical x/y columns and a numeric value column from a CSV table and can return the plot as image content or save it to an output image file.",
+        parameters=[
+            ToolParameter(
+                name = "path",
+                type = "str",
+                description = "the path to the CSV file containing the data to be plotted",
+                required = true
+            ),
+            ToolParameter(
+                name = "xcolumn",
+                type = "str",
+                description = "the column to use for heatmap x-axis categories",
+                required = true
+            ),
+            ToolParameter(
+                name = "ycolumn",
+                type = "str",
+                description = "the column to use for heatmap y-axis categories",
+                required = true
+            ),
+            ToolParameter(
+                name = "value_column",
+                type = "str",
+                description = "the numeric column to use for heatmap cell values",
+                required = true
+            ),
+            ToolParameter(
+                name = "output_path",
+                type = "str",
+                description = "optional output image path (.png or .svg)",
+                required = false
+            ),
+            ToolParameter(
+                name = "title",
+                type = "str",
+                description = "optional plot title",
+                required = false
+            ),
+            ToolParameter(
+                name = "x_axis_label",
+                type = "str",
+                description = "optional label for the x-axis",
+                required = false
+            ),
+            ToolParameter(
+                name = "y_axis_label",
+                type = "str",
+                description = "optional label for the y-axis",
+                required = false
+            ),
+            ToolParameter(
+                name = "colors",
+                type = "array",
+                description = "optional vector of color names used to build the heatmap color gradient. Supported color names are: \"blue\", \"orange\", \"green\", \"purple\", \"lightblue\", \"red\", and \"yellow\".",
+                required = false
+            )
+        ],
+        handler = params -> plot_heatmap(
+            params["path"],
+            params["xcolumn"],
+            params["ycolumn"],
+            params["value_column"];
+            output_path=get(params, "output_path", nothing),
+            title=get(params, "title", nothing),
+            x_axis_label=get(params, "x_axis_label", nothing),
+            y_axis_label=get(params, "y_axis_label", nothing),
+            colors=get(params, "colors", String[])
+        )
+    )
+
+    TOOLS[plot_heatmap_tool.name] = plot_heatmap_tool
+end
+
+push!(INIT_FUNCTIONS, init_plot_heatmap_tool)
 
 
 """

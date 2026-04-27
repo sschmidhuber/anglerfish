@@ -200,6 +200,200 @@
         isfile(output_path_svg) && rm(output_path_svg)
     end
 
+    @testset "Plot Scatter" begin
+        plot_scatter_tool = Anglerfish.TOOLS["plot_scatter"]
+        output_path_png = joinpath(rw_dir, "test_scatterplot.png")
+        output_path_svg = joinpath(rw_dir, "test_scatterplot.svg")
+
+        plot_result = plot_scatter_tool.handler(Dict(
+            "path" => joinpath(ro_dir, "test_table.csv"),
+            "xcolumns" => ["Age"],
+            "ycolumns" => ["Height"],
+            "output_path" => output_path_png,
+            "title" => "Height vs Age",
+            "x_axis_label" => "Age",
+            "y_axis_label" => "Height"
+        )).text
+        @test startswith(plot_result, "plot generated successfully")
+        @test isfile(output_path_png)
+        @test filesize(output_path_png) > 0
+
+        plot_result_svg = plot_scatter_tool.handler(Dict(
+            "path" => joinpath(ro_dir, "test_table.csv"),
+            "xcolumns" => ["Age", "Weight"],
+            "ycolumns" => ["Height", "Height"],
+            "colors" => ["blue", "red"],
+            "output_path" => output_path_svg
+        )).text
+        @test startswith(plot_result_svg, "plot generated successfully")
+        @test isfile(output_path_svg)
+        @test filesize(output_path_svg) > 0
+
+        plot_result_image = plot_scatter_tool.handler(Dict(
+            "path" => joinpath(ro_dir, "test_table.csv"),
+            "xcolumns" => ["Age", "Weight"],
+            "ycolumns" => ["Height", "Age"]
+        ))
+        @test plot_result_image isa ImageContent
+        @test plot_result_image.mime_type == "image/png"
+
+        scatter_invalid = plot_scatter_tool.handler(Dict(
+            "path" => joinpath(ro_dir, "test_table.csv"),
+            "xcolumns" => ["Age"],
+            "ycolumns" => ["Height", "Weight"]
+        )).text
+        @test startswith(scatter_invalid, "ERROR: xcolumns and ycolumns")
+
+        isfile(output_path_png) && rm(output_path_png)
+        isfile(output_path_svg) && rm(output_path_svg)
+    end
+
+    @testset "Plot Hist" begin
+        plot_hist_tool = Anglerfish.TOOLS["plot_hist"]
+        output_path_png = joinpath(rw_dir, "test_histplot.png")
+        output_path_svg = joinpath(rw_dir, "test_histplot.svg")
+
+        plot_result = plot_hist_tool.handler(Dict(
+            "path" => joinpath(ro_dir, "test_table.csv"),
+            "column" => "Age",
+            "bins" => 6,
+            "output_path" => output_path_png,
+            "title" => "Age Distribution",
+            "x_axis_label" => "Age",
+            "y_axis_label" => "Frequency"
+        )).text
+        @test startswith(plot_result, "plot generated successfully")
+        @test isfile(output_path_png)
+        @test filesize(output_path_png) > 0
+
+        plot_result_svg = plot_hist_tool.handler(Dict(
+            "path" => joinpath(ro_dir, "test_table.csv"),
+            "column" => "Height",
+            "colors" => ["green"],
+            "output_path" => output_path_svg
+        )).text
+        @test startswith(plot_result_svg, "plot generated successfully")
+        @test isfile(output_path_svg)
+        @test filesize(output_path_svg) > 0
+
+        plot_result_image = plot_hist_tool.handler(Dict(
+            "path" => joinpath(ro_dir, "test_table.csv"),
+            "column" => "Weight"
+        ))
+        @test plot_result_image isa ImageContent
+        @test plot_result_image.mime_type == "image/png"
+
+        hist_invalid = plot_hist_tool.handler(Dict(
+            "path" => joinpath(ro_dir, "test_table.csv"),
+            "column" => "Name"
+        )).text
+        @test startswith(hist_invalid, "ERROR: no numeric values found")
+
+        isfile(output_path_png) && rm(output_path_png)
+        isfile(output_path_svg) && rm(output_path_svg)
+    end
+
+    @testset "Plot Pie" begin
+        plot_pie_tool = Anglerfish.TOOLS["plot_pie"]
+        output_path_png = joinpath(rw_dir, "test_pieplot.png")
+        output_path_svg = joinpath(rw_dir, "test_pieplot.svg")
+
+        plot_result = plot_pie_tool.handler(Dict(
+            "path" => joinpath(ro_dir, "budget_germany.csv"),
+            "labels_column" => "Einzelplan",
+            "values_column" => "Anteil",
+            "output_path" => output_path_png,
+            "title" => "Budget Germany 2025"
+        )).text
+        @test startswith(plot_result, "plot generated successfully")
+        @test isfile(output_path_png)
+        @test filesize(output_path_png) > 0
+
+        plot_result_svg = plot_pie_tool.handler(Dict(
+            "path" => joinpath(ro_dir, "budget_germany.csv"),
+            "labels_column" => "Einzelplan",
+            "values_column" => "Anteil",
+            "colors" => ["blue", "orange", "green", "purple", "lightblue", "red", "yellow"],
+            "output_path" => output_path_svg,
+            "with_legend" => false
+        )).text
+        @test startswith(plot_result_svg, "plot generated successfully")
+        @test isfile(output_path_svg)
+        @test filesize(output_path_svg) > 0
+
+        plot_result_image = plot_pie_tool.handler(Dict(
+            "path" => joinpath(ro_dir, "test_table.csv"),
+            "labels_column" => "Sex",
+            "values_column" => "Weight"
+        ))
+        @test plot_result_image isa ImageContent
+        @test plot_result_image.mime_type == "image/png"
+
+        pie_invalid = plot_pie_tool.handler(Dict(
+            "path" => joinpath(ro_dir, "test_table.csv"),
+            "labels_column" => "Sex",
+            "values_column" => "City"
+        )).text
+        @test startswith(pie_invalid, "ERROR: pie chart values must be positive numeric values")
+
+        isfile(output_path_png) && rm(output_path_png)
+        isfile(output_path_svg) && rm(output_path_svg)
+    end
+
+    
+    @testset "Plot Heatmap" begin
+        plot_heatmap_tool = Anglerfish.TOOLS["plot_heatmap"]
+        output_path_png = joinpath(rw_dir, "test_heatmap.png")
+        output_path_svg = joinpath(rw_dir, "test_heatmap.svg")
+        heatmap_path = joinpath(ro_dir, "test_heatmap.csv")
+
+        plot_result = plot_heatmap_tool.handler(Dict(
+            "path" => heatmap_path,
+            "xcolumn" => "Department",
+            "ycolumn" => "Month",
+            "value_column" => "Score",
+            "output_path" => output_path_png,
+            "title" => "Department Scores",
+            "x_axis_label" => "Department",
+            "y_axis_label" => "Month"
+        )).text
+        @test startswith(plot_result, "plot generated successfully")
+        @test isfile(output_path_png)
+        @test filesize(output_path_png) > 0
+
+        plot_result_svg = plot_heatmap_tool.handler(Dict(
+            "path" => heatmap_path,
+            "xcolumn" => "Department",
+            "ycolumn" => "Month",
+            "value_column" => "Score",
+            "colors" => ["blue", "yellow", "red"],
+            "output_path" => output_path_svg
+        )).text
+        @test startswith(plot_result_svg, "plot generated successfully")
+        @test isfile(output_path_svg)
+        @test filesize(output_path_svg) > 0
+
+        plot_result_image = plot_heatmap_tool.handler(Dict(
+            "path" => heatmap_path,
+            "xcolumn" => "Department",
+            "ycolumn" => "Month",
+            "value_column" => "Score"
+        ))
+        @test plot_result_image isa ImageContent
+        @test plot_result_image.mime_type == "image/png"
+
+        heatmap_invalid = plot_heatmap_tool.handler(Dict(
+            "path" => joinpath(ro_dir, "test_table.csv"),
+            "xcolumn" => "Sex",
+            "ycolumn" => "City",
+            "value_column" => "Name"
+        )).text
+        @test startswith(heatmap_invalid, "ERROR: no numeric values found")
+
+        isfile(output_path_png) && rm(output_path_png)
+        isfile(output_path_svg) && rm(output_path_svg)
+    end
+
     @testset "Execute SQL" begin
         execute_sql_tool = Anglerfish.TOOLS["execute_sql"]
 
