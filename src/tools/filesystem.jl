@@ -85,9 +85,9 @@ end
 
 push!(INIT_FUNCTIONS, init_read_directory_tool)
 
-# file search
+# local search
 
-function file_search_func()::Union{Function,Nothing}
+function local_search_func()::Union{Function,Nothing}
     if Sys.iswindows()
         return nothing # not implemented yet
     else
@@ -152,16 +152,16 @@ function find_cmd(keywords, directories=[], filter=[], only_files=true, exclude_
 end
 
 
-function init_file_search_tool(config::Dict)
-    @info "initialize file search tool"
-    search_function = file_search_func()
+function init_local_search_tool(config::Dict)
+    @info "initialize local search tool"
+    search_function = local_search_func()
     if isnothing(search_function)
-        @warn "file search tool is not available on this system, no supported search command found"
+        @warn "local search tool is not available on this system, no supported search command found"
         return        
     end
-    file_search_tool = MCPTool(
-        name="file_search",
-        description="searches for files and directories matching the specified keywords within the allowed directories. Returns a list of matching paths.",
+    local_search_tool = MCPTool(
+        name="local_search",
+        description="searches for files and directories matching the specified keywords, on the local system, within the allowed directories",
         parameters=[
             ToolParameter(
                 name = "keywords",
@@ -184,7 +184,7 @@ function init_file_search_tool(config::Dict)
             ToolParameter(
                 name = "only_files",
                 type = "bool",
-                description = "if true, only returns files. If false, returns both files and directories. Default is true.",
+                description = "if true, only returns files. If false, returns both files and directories. Default is false.",
                 required = false
             )
         ],
@@ -203,7 +203,7 @@ function init_file_search_tool(config::Dict)
         end
     )
 
-    TOOLS[file_search_tool.name] = file_search_tool
+    TOOLS[local_search_tool.name] = local_search_tool
 end
 
-push!(INIT_FUNCTIONS, init_file_search_tool)
+push!(INIT_FUNCTIONS, init_local_search_tool)
