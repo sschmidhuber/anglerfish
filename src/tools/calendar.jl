@@ -11,7 +11,7 @@ struct Event
     url::Union{String,Nothing}
 end
 
-Event(title, description, location, start_time, end_time, url) = Event(title, now(), uuid4(), description, location, start_time, end_time, url)
+Event(title, description, location, start_time, end_time, url) = Event(replace(title, "\n" => "\\n"), now(), uuid4(), isnothing(description) ? nothing : replace(description, "\n" => "\\n"), isnothing(location) ? nothing : replace(location, "\n" => "\\n"), start_time, end_time, url)
 
 
 struct Todo
@@ -26,7 +26,7 @@ struct Todo
     url::Union{String,Nothing}
 end
 
-Todo(title, description, location, start_time, due_time, priority, url) = Todo(title, now(), uuid4(), description, location, start_time, due_time, priority, url)
+Todo(title, description, location, start_time, due_time, priority, url) = Todo(replace(title, "\n" => "\\n"), now(), uuid4(), isnothing(description) ? nothing : replace(description, "\n" => "\\n"), isnothing(location) ? nothing : replace(location, "\n" => "\\n"), start_time, due_time, priority, url)
 
 
 struct Calendar
@@ -52,33 +52,33 @@ function ics_timestamp(dt::DateTime)
 end
 
 function ics_component(event::Event)
-    component = "BEGIN:VEVENT\r\nUID:$(string(event.uid))\r\nSUMMARY:$(event.title)\r\n"
-    (!isnothing(event.description) && !isempty(event.description)) && (component *= "DESCRIPTION:$(event.description)\r\n")
-    (!isnothing(event.location) && !isempty(event.location)) && (component *= "LOCATION:$(event.location)\r\n")
-    component *= "DTSTAMP:$(ics_timestamp(event.created_timestamp))\r\n"
-    component *= "DTSTART;$(ics_time(event.start_time))\r\n"
+    component = "BEGIN:VEVENT\nUID:$(string(event.uid))\nSUMMARY:$(event.title)\n"
+    (!isnothing(event.description) && !isempty(event.description)) && (component *= "DESCRIPTION:$(event.description)\n")
+    (!isnothing(event.location) && !isempty(event.location)) && (component *= "LOCATION:$(event.location)\n")
+    component *= "DTSTAMP:$(ics_timestamp(event.created_timestamp))\n"
+    component *= "DTSTART;$(ics_time(event.start_time))\n"
     if event.start_time isa Date
-        component *= "DTEND;$(ics_time(event.start_time + Day(1)))\r\n"
+        component *= "DTEND;$(ics_time(event.start_time + Day(1)))\n"
     elseif isnothing(event.end_time)
-        component *= "DTEND;$(ics_time(event.start_time + Hour(1)))\r\n"
+        component *= "DTEND;$(ics_time(event.start_time + Hour(1)))\n"
     else
-        component *= "DTEND;$(ics_time(event.end_time))\r\n"
+        component *= "DTEND;$(ics_time(event.end_time))\n"
     end
-    !isnothing(event.url) && (component *= "URL:$(event.url)\r\n")
+    !isnothing(event.url) && (component *= "URL:$(event.url)\n")
     component *= "END:VEVENT"
 end
 
 function ics_component(todo::Todo)
-    component = "BEGIN:VTODO\r\nUID:$(string(todo.uid))\r\nSUMMARY:$(todo.title)\r\n"
+    component = "BEGIN:VTODO\nUID:$(string(todo.uid))\nSUMMARY:$(todo.title)\n"
     if !isnothing(todo.description) && !isempty(todo.description)
-        component *= "DESCRIPTION:$(todo.description)\r\n"
+        component *= "DESCRIPTION:$(todo.description)\n"
     end
     if !isnothing(todo.location) && !isempty(todo.location)
-        component *= "LOCATION:$(todo.location)\r\n"
+        component *= "LOCATION:$(todo.location)\n"
     end
-    component *= "DTSTAMP:$(ics_timestamp(todo.created_timestamp))\r\n"
-    !isnothing(todo.start_time) && (component *= "DTSTART;$(ics_time(todo.start_time))\r\n")
-    !isnothing(todo.due_time) && (component *= "DUE;$(ics_time(todo.due_time))\r\n")
+    component *= "DTSTAMP:$(ics_timestamp(todo.created_timestamp))\n"
+    !isnothing(todo.start_time) && (component *= "DTSTART;$(ics_time(todo.start_time))\n")
+    !isnothing(todo.due_time) && (component *= "DUE;$(ics_time(todo.due_time))\n")
     if !isnothing(todo.priority)
         if todo.priority == "high"
             p = 1
@@ -89,17 +89,17 @@ function ics_component(todo::Todo)
         else
             p = 5
         end
-        component *= "PRIORITY:$p\r\n"
+        component *= "PRIORITY:$p\n"
     end
-    !isnothing(todo.url) && (component *= "URL:$(todo.url)\r\n")
+    !isnothing(todo.url) && (component *= "URL:$(todo.url)\n")
     component *= "END:VTODO"
 end
 
 function ics_calendar(calendar::Calendar)
-    ics = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Anglerfish//NONSGML / icalendar //EN\r\n"
+    ics = "BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//Anglerfish//NONSGML / icalendar //EN\n"
     components = map(item -> ics_component(item), calendar.items)
-    ics *= join(components, "\r\n")
-    ics *= "\r\nEND:VCALENDAR\r\n"
+    ics *= join(components, "\n")
+    ics *= "\nEND:VCALENDAR\n"
 end
 
 

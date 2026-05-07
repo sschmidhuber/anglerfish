@@ -1,4 +1,4 @@
-@test_skip @testset "Calendar" begin
+@testset "Calendar" begin
     calendar_tool = Anglerfish.TOOLS["calendar_items"]
     calendar_result = calendar_tool.handler(Dict(
         "items" => [
@@ -14,7 +14,7 @@
                 "type" => "todo",
                 "title" => "Buy groceries",
                 "due" => "2024-07-02T18:00:00",
-                "description" => "Milk, Bread, Eggs"
+                "description" => "* Milk\n* Bread\n* Eggs"
             ),
             Dict(
                 "type" => "todo",
