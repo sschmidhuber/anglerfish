@@ -1,0 +1,69 @@
+# System Architecture Template
+#
+# Usage:
+#   d2 --layout elk architecture.d2 architecture.svg
+#
+# Replace the placeholder nodes and connections with your actual services.
+
+vars: {
+  d2-config: {
+    layout-engine: elk
+  }
+}
+
+# ── External actors ──────────────────────────────────────────────
+client: Browser / Client {
+  shape: person
+  style: {fill: "#EAF4FB"; stroke: "#2176AE"}
+}
+
+# ── Public-facing layer ──────────────────────────────────────────
+DMZ: {
+  style: {fill: "#F0F8FF"; stroke: "#2176AE"; border-radius: 8}
+
+  cdn: CDN {shape: cloud}
+  lb: Load Balancer {shape: hexagon}
+
+  cdn -> lb
+}
+
+# ── Application layer ────────────────────────────────────────────
+AppLayer: {
+  style: {fill: "#F5FFF5"; stroke: "#2D9E5C"; border-radius: 8}
+
+  api: API Service {shape: rectangle}
+  worker: Background Worker {shape: rectangle}
+  cache: Cache {shape: cylinder}
+
+  api -> cache: read/write
+  api -> worker: async jobs
+}
+
+# ── Data layer ───────────────────────────────────────────────────
+DataLayer: {
+  style: {fill: "#FFFBF0"; stroke: "#E0A500"; border-radius: 8}
+
+  primary-db: Primary DB {shape: cylinder}
+  replica-db: Read Replica {shape: cylinder}
+  object-store: Object Storage {shape: stored_data}
+
+  primary-db -> replica-db: replication
+}
+
+# ── External services ────────────────────────────────────────────
+ExternalServices: {
+  style: {fill: "#FFF0F0"; stroke: "#CC3333"; stroke-dash: 4; border-radius: 8}
+
+  auth: Auth Provider
+  email: Email Service
+  monitoring: Monitoring
+}
+
+# ── Connections ──────────────────────────────────────────────────
+client -> DMZ.cdn: HTTPS
+DMZ.lb -> AppLayer.api: HTTP
+AppLayer.api -> DataLayer.primary-db: SQL
+AppLayer.api -> DataLayer.object-store: S3 API
+AppLayer.api -> ExternalServices.auth: OAuth2
+AppLayer.worker -> ExternalServices.email: SMTP
+AppLayer.api -> ExternalServices.monitoring: metrics

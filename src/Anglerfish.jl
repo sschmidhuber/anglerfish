@@ -32,6 +32,7 @@ include("tools/filesystem.jl")
 include("tools/shell.jl")
 include("tools/io.jl")
 include("tools/analytics.jl")
+include("tools/skill.jl")
 
 export main
 
@@ -44,8 +45,12 @@ Configure Anglerfish by reading a template config file, modifying it as needed, 
 function configure(template, config_path)
     config = TOML.parsefile(template)
     anglerfish_data_dir = joinpath(BaseDirs.DATA_HOME, "anglerfish")
-    config["filesystem"]["read_only"] = [Base.Filesystem.homedir()]
-    config["filesystem"]["read_write"] = [anglerfish_data_dir]
+    config["directories"]["read_only"] = [Base.Filesystem.homedir()]
+    config["directories"]["read_write"] = [anglerfish_data_dir]
+    config["directories"]["skills"] = [
+        joinpath(Base.Filesystem.homedir(), ".agents", "skills"),
+        joinpath(anglerfish_data_dir, "skills")
+        ]
     mkpath(anglerfish_data_dir)
     
     open(config_path, "w") do io
@@ -60,23 +65,27 @@ end
 Load configuration and run tool initialization functions.
 """
 function init()
-    config_path = joinpath(BaseDirs.CONFIG_HOME, "anglerfish", "config.toml")
-    local config
-    if !isfile(config_path)
-        mkpath(joinpath(BaseDirs.CONFIG_HOME, "anglerfish"))
-        configure(joinpath(@__DIR__, "config.toml"), config_path)
-        @info "No config file found. A default config has been created at $config_path."
-    end
-    try
+    if ARGS[1] == "TEST_MODE"
+        config = TOML.parsefile("testdata/read_only/config.toml")
+    else
+        config_path = joinpath(BaseDirs.CONFIG_HOME, "anglerfish", "config.toml")
+        local config
+        if !isfile(config_path)
+            mkpath(joinpath(BaseDirs.CONFIG_HOME, "anglerfish"))
+            configure(joinpath(@__DIR__, "config.toml"), config_path)
+            @info "No config file found. A default config has been created at $config_path."
+        end
+        try
+            config = TOML.parsefile(config_path)
+        catch error
+            @error "failed to parse config file at $config_path: $error"
+            exit(1)
+        end
         config = TOML.parsefile(config_path)
-    catch error
-        @error "failed to parse config file at $config_path: $error"
-        exit(1)
     end
-    config = TOML.parsefile(config_path)
 
-    append!(READ_ONLY_DIRECTORIES, config["filesystem"]["read_only"])
-    append!(READ_WRITE_DIRECTORIES, config["filesystem"]["read_write"])
+    append!(READ_ONLY_DIRECTORIES, config["directories"]["read_only"])
+    append!(READ_WRITE_DIRECTORIES, config["directories"]["read_write"])
 
     for init in INIT_FUNCTIONS
         init(config)

@@ -1,0 +1,58 @@
+# Entity-Relationship Diagram Template
+#
+# Usage:
+#   d2 --layout elk erd.d2 erd.svg
+#
+# Uses D2's sql_table shape for a clean ER diagram.
+# Constraints: primary_key, foreign_key, unique, not_null
+
+vars: {
+  d2-config: {
+    layout-engine: elk
+  }
+}
+
+# ── Tables ───────────────────────────────────────────────────────
+
+users: {
+  shape: sql_table
+  id: int {constraint: primary_key}
+  email: varchar(255) {constraint: [unique; not_null]}
+  display_name: varchar(100)
+  created_at: timestamp {constraint: not_null}
+  updated_at: timestamp
+}
+
+organizations: {
+  shape: sql_table
+  id: int {constraint: primary_key}
+  name: varchar(255) {constraint: not_null}
+  slug: varchar(100) {constraint: unique}
+  created_at: timestamp {constraint: not_null}
+}
+
+memberships: {
+  shape: sql_table
+  id: int {constraint: primary_key}
+  user_id: int {constraint: [foreign_key; not_null]}
+  org_id: int {constraint: [foreign_key; not_null]}
+  role: varchar(50) {constraint: not_null}
+  joined_at: timestamp
+}
+
+projects: {
+  shape: sql_table
+  id: int {constraint: primary_key}
+  org_id: int {constraint: [foreign_key; not_null]}
+  name: varchar(255) {constraint: not_null}
+  description: text
+  created_by: int {constraint: foreign_key}
+  created_at: timestamp
+}
+
+# ── Relationships ────────────────────────────────────────────────
+
+users.id -> memberships.user_id
+organizations.id -> memberships.org_id
+organizations.id -> projects.org_id
+users.id -> projects.created_by

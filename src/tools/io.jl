@@ -211,7 +211,7 @@ function init_write_file_tool(config::Dict)
     @info "initialize write file tool"
     write_file_tool = MCPTool(
         name="write_file",
-        description="create files, documents and tables. Supported file formats are: $(join(PANDOC_OUTPUT_FORMATS, ", ", " and ")).",
+        description="create files, documents and tables. Supported file formats are: $(join(PANDOC_OUTPUT_FORMATS, ", ")) and PDF.",
         parameters=[
             ToolParameter(
                 name = "content",

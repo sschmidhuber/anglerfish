@@ -1,0 +1,35 @@
+# Sequence Diagram Template
+#
+# Usage:
+#   d2 sequence.d2 sequence.svg
+#
+# Add or remove participants and messages as needed.
+
+shape: sequence_diagram
+
+# ── Participants (declare to control order) ──────────────────────
+client: Client
+gateway: API Gateway
+service: Backend Service
+db: Database
+cache: Cache
+
+# ── Happy path ───────────────────────────────────────────────────
+client -> gateway: GET /resource/42
+gateway -> cache: lookup key=42
+cache -> gateway: MISS
+
+gateway -> service: forward request
+service -> db: SELECT * FROM resources WHERE id = 42
+db -> service: row data
+service -> cache: SET key=42 (TTL 300s)
+service -> gateway: 200 OK {body}
+gateway -> client: 200 OK {body}
+
+# ── Error path ───────────────────────────────────────────────────
+client -> gateway: GET /resource/999
+gateway -> service: forward request
+service -> db: SELECT * FROM resources WHERE id = 999
+db -> service: empty result
+service -> gateway: 404 Not Found
+gateway -> client: 404 Not Found

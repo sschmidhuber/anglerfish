@@ -22,10 +22,10 @@
 
         # test execution with working directory specified
         shell_result_with_wd = shell_tool.handler(Dict("command" => "pwd", "working_directory" => ro_dir, "open_terminal" => false)).text |> JSON.parse
-        @test shell_result_with_wd["stdout"] == ro_dir
+        @test shell_result_with_wd["stdout"] == "/" * ro_dir
 
         # test execution with invalid working directory specified (should default to home or first allowed directory)
         shell_result_with_invalid_wd = shell_tool.handler(Dict("command" => "pwd", "working_directory" => "/invalid/directory")).text |> JSON.parse
-        @test shell_result_with_invalid_wd["stdout"] == homedir()
+        @test shell_result_with_invalid_wd["stdout"] == "/" * ro_dir
     end
 end

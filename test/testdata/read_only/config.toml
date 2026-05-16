@@ -17,9 +17,9 @@ postal_code = "06510"
 country = "USA"
 
 [directories]
-read_only = []
-read_write = []
-skills = []
+read_only = ["testdata/read_only"]
+read_write = ["testdata/read_write"]
+skills = ["testdata/skills"]
 
 [applications]
 terminal = "konsole"
