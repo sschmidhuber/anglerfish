@@ -23,6 +23,7 @@ const TOOLS = Dict{String,ModelContextProtocol.MCPTool}()
 const INIT_FUNCTIONS = Function[]
 const READ_ONLY_DIRECTORIES = []
 const READ_WRITE_DIRECTORIES = []
+const SKILLS_DIRECTORIES = []
 
 include("common.jl")
 include("tools/basic.jl")
@@ -65,7 +66,7 @@ end
 Load configuration and run tool initialization functions.
 """
 function init()
-    if ARGS[1] == "TEST_MODE"
+    if length(ARGS) > 0 && ARGS[1] == "TEST_MODE"
         config = TOML.parsefile("testdata/read_only/config.toml")
     else
         config_path = joinpath(BaseDirs.CONFIG_HOME, "anglerfish", "config.toml")
@@ -86,6 +87,7 @@ function init()
 
     append!(READ_ONLY_DIRECTORIES, config["directories"]["read_only"])
     append!(READ_WRITE_DIRECTORIES, config["directories"]["read_write"])
+    append!(SKILLS_DIRECTORIES, config["directories"]["skills"])
 
     for init in INIT_FUNCTIONS
         init(config)

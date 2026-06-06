@@ -14,14 +14,9 @@ Anglerfish.init()
 
 ro_dir = joinpath("testdata", "read_only")
 rw_dir = joinpath("testdata", "read_write")
-#skill_dir = joinpath(@__DIR__, "testdata", "skills")
-#append!(Anglerfish.READ_ONLY_DIRECTORIES, [ro_dir])
-#append!(Anglerfish.READ_WRITE_DIRECTORIES, [rw_dir])
+skill_dir = first(Anglerfish.SKILLS_DIRECTORIES)
 
-#= TODO: review this
-for skill in Anglerfish.scan_skills(skill_dir)
-    Anglerfish.SKILLS[skill.name] = skill
-end=#
+
 
 @testset "Tools" verbose=true begin
     include(joinpath(@__DIR__, "tools", "basic_tools.jl"))
