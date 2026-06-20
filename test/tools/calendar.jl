@@ -36,6 +36,28 @@
                 "start" => "2027-07-15",
                 "description" => "Submit final project report",
                 "url" => "https://www.example.com/project-details"
+            ),
+            Dict(
+                "type" => "event",
+                "title" => "Sommer Urlaub",
+                "start" => "2027-07-02",
+                "end" => "2027-07-16",
+                "description" => "Familienurlaub",
+                "location" => "Gasteinertal, Österreich"
+            ),
+            Dict(
+                "type" => "event",
+                "title" => "Multiple days with time",
+                "start" => "2027-04-01T10:00:00",
+                "end" => "2027-04-03T08:00:00",
+                "description" => "An event, longer than a single day, with an exact start and end time."
+            ),
+            Dict(
+                "type" => "event",
+                "title" => "Two day event",
+                "start" => "2027-01-07",
+                "end" => "2027-01-08",
+                "description" => "Two day event without specific time"
             )
         ]
     )).text

@@ -57,10 +57,12 @@ function ics_component(event::Event)
     (!isnothing(event.location) && !isempty(event.location)) && (component *= "LOCATION:$(event.location)\n")
     component *= "DTSTAMP:$(ics_timestamp(event.created_timestamp))\n"
     component *= "DTSTART;$(ics_time(event.start_time))\n"
-    if event.start_time isa Date
+    if isnothing(event.end_time) && event.start_time isa Date
         component *= "DTEND;$(ics_time(event.start_time + Day(1)))\n"
     elseif isnothing(event.end_time)
         component *= "DTEND;$(ics_time(event.start_time + Hour(1)))\n"
+    elseif event.end_time isa Date && event.start_time isa Date
+        component *= "DTEND;$(ics_time(event.end_time + Day(1)))\n"
     else
         component *= "DTEND;$(ics_time(event.end_time))\n"
     end
@@ -190,7 +192,7 @@ function create_calendar_items(params)
             elseif length(item["start"]) == 19
                 start_time = tryparse(DateTime, item["start"], dateformat"yyyy-mm-ddTHH:MM:SS")
                 end_time = tryparse(DateTime, get(item, "end", ""), dateformat"yyyy-mm-ddTHH:MM:SS") 
-                else
+            else
                 throw(ErrorException("Failed to create calendar items: invalid start time format for event item. start time should be in ISO 8601 format, either as a full datetime (e.g., 2024-01-01T10:00:00) or just a date for all day events (e.g., 2024-01-01)."))
             end
             if isnothing(start_time)
