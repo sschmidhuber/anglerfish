@@ -1,5 +1,5 @@
 @testset "Analytics" begin
-    @test_skip @testset "Gnuplot" begin
+    #=@testset "Gnuplot" begin
         plotting_tool = Anglerfish.TOOLS["gnuplot"]
 
         # test plotting from CSV data file, creating a PNG output, and checking that the output file is created successfully. Since we can't easily automate checking the actual plot output, we'll just check that gnuplot executes without error and creates the output file.
@@ -47,7 +47,7 @@
         if isfile(joinpath(rw_dir, "test_plot.png"))
             rm(joinpath(rw_dir, "test_plot.png"))
         end
-    end
+    end=#
 
     @testset "Describe Table" begin
         describe_table_tool = Anglerfish.TOOLS["describe_table"]

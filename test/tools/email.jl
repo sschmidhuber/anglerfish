@@ -1,4 +1,4 @@
-@test_skip @testset "Email" begin
+@testset "Email" begin
     compose_email_tool = Anglerfish.TOOLS["compose_email"]
     @test compose_email_tool.handler(Dict(
             "subject" => "",
