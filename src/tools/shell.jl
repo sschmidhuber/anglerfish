@@ -103,19 +103,19 @@ function init_shell_tool(config::Dict)
         parameters=[
             ToolParameter(
                 name = "command",
-                type = "str",
+                type = "string",
                 description = "the bash command or script to execute",
                 required = true
             ),
             ToolParameter(
                 name = "working_directory",
-                type = "str",
+                type = "string",
                 description = "the working directory to execute the command resp. script in. Must be an allowed directory. If not specified or invalid, defaults to the home directory or the first allowed directory.",
                 required = false
             ),
             ToolParameter(
                 name = "open_terminal",
-                type = "bool",
+                type = "boolean",
                 description = "if true, the command is executed in a terminal application (e.g. xterm) this can be used if user interaction is required or terminal output should be visible to the user. If false (default), the command is executed directly and the output is returned by the tool call. In that case the user can't see the terminal wiondow.",
                 required = false
             )

@@ -146,7 +146,7 @@ function init_skill_activation_tool(config::Dict)
         parameters=[
             ToolParameter(
                 name = "name",
-                type = "str",
+                type = "string",
                 description = "the name of the skill to activate",
                 required = true
             )

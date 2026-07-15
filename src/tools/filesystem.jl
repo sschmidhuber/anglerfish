@@ -53,7 +53,7 @@ function init_read_directory_tool(config)
         parameters=[
             ToolParameter(
                 name = "directory",
-                type = "str",
+                type = "string",
                 description = "the absolute path to the directory to be read",
                 required = true
             ),
@@ -183,7 +183,7 @@ function init_local_search_tool(config::Dict)
             ),
             ToolParameter(
                 name = "only_files",
-                type = "bool",
+                type = "boolean",
                 description = "if true, only returns files. If false, returns both files and directories. Default is false.",
                 required = false
             )

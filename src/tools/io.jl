@@ -107,7 +107,7 @@ function init_read_file_tool(config::Dict)
         parameters=[
             ToolParameter(
                 name = "path",
-                type = "str",
+                type = "string",
                 description = "the absolute path to the file to be read",
                 required = true
             )
@@ -215,25 +215,25 @@ function init_write_file_tool(config::Dict)
         parameters=[
             ToolParameter(
                 name = "content",
-                type = "str",
+                type = "string",
                 description = "the content to be written to the file. If `raw` is false, this has to be valid markdown text, if `raw` is true, content will be written directly to the file as text without format conversion.",
                 required = true
             ),
             ToolParameter(
                 name = "path",
-                type = "str",
+                type = "string",
                 description = "the absolute path where the file should be written to, the path must be within the writable directories: $(join(READ_WRITE_DIRECTORIES, ", ", " and ")). ",
                 required = true
             ),
             ToolParameter(
                 name = "raw",
-                type = "bool",
+                type = "boolean",
                 description = "if true, writes content directly as text without format conversion. If false (default), treats content as markdown and converts it to the target format based on file extension. Raw output is useful if you want to write plain text files, source code, CSV tables or if your content is already formatted in the target format (e.g. HTML content for .html output).",
                 required = false
             ),
             ToolParameter(
                 name = "working_directory",
-                type = "str",
+                type = "string",
                 description = "the working directory where the pandoc command should be executed for format conversion. This can be used to specify the location of any media files that the markdown content references.",
                 required = false
             )

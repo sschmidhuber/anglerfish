@@ -8,7 +8,7 @@ function init_email_tools(config::Dict)
         parameters=[
             ToolParameter(
                 name = "subject",
-                type = "str",
+                type = "string",
                 description = "the subject of the email",
                 required = false
             ),
@@ -32,7 +32,7 @@ function init_email_tools(config::Dict)
             ),
             ToolParameter(
                 name = "content",
-                type = "str",
+                type = "string",
                 description = "the content of the email",
                 required = false
             ),

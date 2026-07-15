@@ -6,18 +6,19 @@ function init_date_time_tool(config::Dict)
         name="date_time",
         description="returns the current local date, time, timezone, day of week and week of year",
         parameters=[],
-        handler=params -> TextContent(; type="text", text=JSON.json(date_time()))
+        handler=params -> date_time()
     )
     TOOLS[date_time_tool.name] = date_time_tool
 end
 
 function date_time()
+    t = now()
     Dict(
-        "time" => Dates.format(now(), "HH:MM"),
-        "date" => today() |> string,
+        "time" => Dates.format(t, "HH:MM"),
+        "date" => Date(t),
         "timezone" => localzone() |> string,
-        "day_of_week" => lowercase(string(Dates.dayname(now()))),
-        "week_of_year" => week(now())
+        "day_of_week" => string(Dates.dayname(t)),
+        "week_of_year" => week(t)
     )
 end
 
@@ -32,10 +33,9 @@ function init_user_data_tool(config::Dict)
         name="user_data",
         description="returns a set of data about the user, including name, day of birth, address, email ...",
         parameters=[],
-        handler=params -> TextContent(; type="text", text=Dict(
+        handler=params -> Dict(
             "master_data" => config["user_data"],
             "address" => config["user_address"]
-        ) |> JSON.json
         )
     )
     TOOLS[user_data_tool.name] = user_data_tool
@@ -81,7 +81,7 @@ function init_system_info_tool(config::Dict)
         name="system_info",
         description="returns a set of data about the system, including os, cpu and memory",
         parameters=[],
-        handler=params -> TextContent(; type="text", text=system_info() |> JSON.json)
+        handler=params -> system_info()
     )
     TOOLS[system_info_tool.name] = system_info_tool
 end
@@ -99,12 +99,12 @@ function init_open_file_tool(config::Dict)
         parameters=[
             ToolParameter(
                 name = "file_path",
-                type = "str",
+                type = "string",
                 description = "the absolute path to the file to be opened",
                 required = true
             )
         ],
-        handler=params -> TextContent(; type="text", text=open_file(params["file_path"]))
+        handler=params -> open_file(params["file_path"])
     )
     TOOLS[open_file_tool.name] = open_file_tool
 end

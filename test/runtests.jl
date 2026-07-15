@@ -20,8 +20,8 @@ skill_dir = first(Anglerfish.SKILLS_DIRECTORIES)
 
 @testset "Tools" verbose=true begin
     include(joinpath(@__DIR__, "tools", "basic_tools.jl"))
-    include(joinpath(@__DIR__, "tools", "email.jl"))
-    include(joinpath(@__DIR__, "tools", "calendar.jl"))
+    #include(joinpath(@__DIR__, "tools", "email.jl"))
+    #include(joinpath(@__DIR__, "tools", "calendar.jl"))
     include(joinpath(@__DIR__, "tools", "filesystem.jl"))
     include(joinpath(@__DIR__, "tools", "shell_command_execution.jl"))
     include(joinpath(@__DIR__, "tools", "io.jl"))

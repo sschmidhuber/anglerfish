@@ -42,7 +42,7 @@ function init_describe_table_tool(config::Dict)
         parameters=[
             ToolParameter(
                 name = "path",
-                type = "str",
+                type = "string",
                 description = "the path to the CSV file to be described",
                 required = true
             )
@@ -129,25 +129,25 @@ function init_execute_sql_tool(config::Dict)
         parameters=[
             ToolParameter(
                 name = "source_path",
-                type = "str",
+                type = "string",
                 description = "the path to the CSV file to be queried",
                 required = true
             ),
             ToolParameter(
                 name = "query",
-                type = "str",
+                type = "string",
                 description = "the SQL query to execute on the CSV data. The table name that corresponds to the CSV file name (without file extension, e.g. \"finance\" when querying a file named \"finance.csv\"). All SQLite compatible SQL syntax is supported.",
                 required = true
             ),
             ToolParameter(
                 name = "sink_path",
-                type = "str",
+                type = "string",
                 description = "path where the result of the SQL query should be stored as a CSV file. If not provided, the result will be returned as markdown-formatted table text content.",
                 required = false
             ),
             ToolParameter(
                 name = "persist_changes",
-                type = "bool",
+                type = "boolean",
                 description = "if true, any changes made to the data (e.g. through UPDATE or DELETE statements) will be persisted back to the original CSV file. Use with caution, as this can modify the original data. Write permissions wo the source path are required to enable this option.",
                 required = false
             )
@@ -457,13 +457,13 @@ function init_plot_bar_tool(config::Dict)
         parameters=[
             ToolParameter(
                 name = "path",
-                type = "str",
+                type = "string",
                 description = "the path to the CSV file containing the data to be plotted",
                 required = true
             ),
             ToolParameter(
                 name = "xcolumn",
-                type = "str",
+                type = "string",
                 description = "the column to use for x-axis categories",
                 required = true
             ),
@@ -475,25 +475,25 @@ function init_plot_bar_tool(config::Dict)
             ),
             ToolParameter(
                 name = "output_path",
-                type = "str",
+                type = "string",
                 description = "optional output image path (.png or .svg)",
                 required = false
             ),
             ToolParameter(
                 name = "title",
-                type = "str",
+                type = "string",
                 description = "optional plot title",
                 required = false
             ),
             ToolParameter(
                 name = "x_axis_label",
-                type = "str",
+                type = "string",
                 description = "optional label for the x-axis",
                 required = false
             ),
             ToolParameter(
                 name = "y_axis_label",
-                type = "str",
+                type = "string",
                 description = "optional label for the y-axis",
                 required = false
             ),
@@ -505,13 +505,13 @@ function init_plot_bar_tool(config::Dict)
             ),
             ToolParameter(
                 name = "with_legend",
-                type = "bool",
+                type = "boolean",
                 description = "whether to include a legend when plotting multiple y-columns",
                 required = false
             ),
             ToolParameter(
                 name = "stacked",
-                type = "bool",
+                type = "boolean",
                 description = "whether multiple y-columns should be stacked instead of grouped",
                 required = false
             )
@@ -632,13 +632,13 @@ function init_plot_line_tool(config::Dict)
         parameters=[
             ToolParameter(
                 name = "path",
-                type = "str",
+                type = "string",
                 description = "the path to the CSV file containing the data to be plotted",
                 required = true
             ),
             ToolParameter(
                 name = "xcolumn",
-                type = "str",
+                type = "string",
                 description = "the column to use for x-axis values or categories",
                 required = true
             ),
@@ -650,25 +650,25 @@ function init_plot_line_tool(config::Dict)
             ),
             ToolParameter(
                 name = "output_path",
-                type = "str",
+                type = "string",
                 description = "optional output image path (.png or .svg)",
                 required = false
             ),
             ToolParameter(
                 name = "title",
-                type = "str",
+                type = "string",
                 description = "optional plot title",
                 required = false
             ),
             ToolParameter(
                 name = "x_axis_label",
-                type = "str",
+                type = "string",
                 description = "optional label for the x-axis",
                 required = false
             ),
             ToolParameter(
                 name = "y_axis_label",
-                type = "str",
+                type = "string",
                 description = "optional label for the y-axis",
                 required = false
             ),
@@ -680,7 +680,7 @@ function init_plot_line_tool(config::Dict)
             ),
             ToolParameter(
                 name = "with_legend",
-                type = "bool",
+                type = "boolean",
                 description = "whether to include a legend when plotting multiple y-columns",
                 required = false
             )
@@ -800,13 +800,13 @@ function init_plot_box_tool(config::Dict)
         parameters=[
             ToolParameter(
                 name = "path",
-                type = "str",
+                type = "string",
                 description = "the path to the CSV file containing the data to be plotted",
                 required = true
             ),
             ToolParameter(
                 name = "xcolumn",
-                type = "str",
+                type = "string",
                 description = "the column to use for grouping categories on the x-axis",
                 required = true
             ),
@@ -818,25 +818,25 @@ function init_plot_box_tool(config::Dict)
             ),
             ToolParameter(
                 name = "output_path",
-                type = "str",
+                type = "string",
                 description = "optional output image path (.png or .svg)",
                 required = false
             ),
             ToolParameter(
                 name = "title",
-                type = "str",
+                type = "string",
                 description = "optional plot title",
                 required = false
             ),
             ToolParameter(
                 name = "x_axis_label",
-                type = "str",
+                type = "string",
                 description = "optional label for the x-axis",
                 required = false
             ),
             ToolParameter(
                 name = "y_axis_label",
-                type = "str",
+                type = "string",
                 description = "optional label for the y-axis",
                 required = false
             ),
@@ -848,7 +848,7 @@ function init_plot_box_tool(config::Dict)
             ),
             ToolParameter(
                 name = "with_legend",
-                type = "bool",
+                type = "boolean",
                 description = "whether to include a legend when plotting multiple y-columns",
                 required = false
             )
@@ -950,7 +950,7 @@ function init_plot_scatter_tool(config::Dict)
         parameters=[
             ToolParameter(
                 name = "path",
-                type = "str",
+                type = "string",
                 description = "the path to the CSV file containing the data to be plotted",
                 required = true
             ),
@@ -968,25 +968,25 @@ function init_plot_scatter_tool(config::Dict)
             ),
             ToolParameter(
                 name = "output_path",
-                type = "str",
+                type = "string",
                 description = "optional output image path (.png or .svg)",
                 required = false
             ),
             ToolParameter(
                 name = "title",
-                type = "str",
+                type = "string",
                 description = "optional plot title",
                 required = false
             ),
             ToolParameter(
                 name = "x_axis_label",
-                type = "str",
+                type = "string",
                 description = "optional label for the x-axis",
                 required = false
             ),
             ToolParameter(
                 name = "y_axis_label",
-                type = "str",
+                type = "string",
                 description = "optional label for the y-axis",
                 required = false
             ),
@@ -998,7 +998,7 @@ function init_plot_scatter_tool(config::Dict)
             ),
             ToolParameter(
                 name = "with_legend",
-                type = "bool",
+                type = "boolean",
                 description = "whether to include a legend when plotting multiple series",
                 required = false
             )
@@ -1076,43 +1076,43 @@ function init_plot_hist_tool(config::Dict)
         parameters=[
             ToolParameter(
                 name = "path",
-                type = "str",
+                type = "string",
                 description = "the path to the CSV file containing the data to be plotted",
                 required = true
             ),
             ToolParameter(
                 name = "column",
-                type = "str",
+                type = "string",
                 description = "the numeric column to use for histogram values",
                 required = true
             ),
             ToolParameter(
                 name = "bins",
-                type = "int",
+                type = "integer",
                 description = "optional number of histogram bins",
                 required = false
             ),
             ToolParameter(
                 name = "output_path",
-                type = "str",
+                type = "string",
                 description = "optional output image path (.png or .svg)",
                 required = false
             ),
             ToolParameter(
                 name = "title",
-                type = "str",
+                type = "string",
                 description = "optional plot title",
                 required = false
             ),
             ToolParameter(
                 name = "x_axis_label",
-                type = "str",
+                type = "string",
                 description = "optional label for the x-axis",
                 required = false
             ),
             ToolParameter(
                 name = "y_axis_label",
-                type = "str",
+                type = "string",
                 description = "optional label for the y-axis",
                 required = false
             ),
@@ -1208,31 +1208,31 @@ function init_plot_pie_tool(config::Dict)
         parameters=[
             ToolParameter(
                 name = "path",
-                type = "str",
+                type = "string",
                 description = "the path to the CSV file containing the data to be plotted",
                 required = true
             ),
             ToolParameter(
                 name = "labels_column",
-                type = "str",
+                type = "string",
                 description = "the column that provides the pie slice labels",
                 required = true
             ),
             ToolParameter(
                 name = "values_column",
-                type = "str",
+                type = "string",
                 description = "the numeric column that provides the pie slice values",
                 required = true
             ),
             ToolParameter(
                 name = "output_path",
-                type = "str",
+                type = "string",
                 description = "optional output image path (.png or .svg)",
                 required = false
             ),
             ToolParameter(
                 name = "title",
-                type = "str",
+                type = "string",
                 description = "optional plot title",
                 required = false
             ),
@@ -1244,7 +1244,7 @@ function init_plot_pie_tool(config::Dict)
             ),
             ToolParameter(
                 name = "with_legend",
-                type = "bool",
+                type = "boolean",
                 description = "whether to include a legend for the pie slices",
                 required = false
             )
@@ -1350,49 +1350,49 @@ function init_plot_heatmap_tool(config::Dict)
         parameters=[
             ToolParameter(
                 name = "path",
-                type = "str",
+                type = "string",
                 description = "the path to the CSV file containing the data to be plotted",
                 required = true
             ),
             ToolParameter(
                 name = "xcolumn",
-                type = "str",
+                type = "string",
                 description = "the column to use for heatmap x-axis categories",
                 required = true
             ),
             ToolParameter(
                 name = "ycolumn",
-                type = "str",
+                type = "string",
                 description = "the column to use for heatmap y-axis categories",
                 required = true
             ),
             ToolParameter(
                 name = "value_column",
-                type = "str",
+                type = "string",
                 description = "the numeric column to use for heatmap cell values",
                 required = true
             ),
             ToolParameter(
                 name = "output_path",
-                type = "str",
+                type = "string",
                 description = "optional output image path (.png or .svg)",
                 required = false
             ),
             ToolParameter(
                 name = "title",
-                type = "str",
+                type = "string",
                 description = "optional plot title",
                 required = false
             ),
             ToolParameter(
                 name = "x_axis_label",
-                type = "str",
+                type = "string",
                 description = "optional label for the x-axis",
                 required = false
             ),
             ToolParameter(
                 name = "y_axis_label",
-                type = "str",
+                type = "string",
                 description = "optional label for the y-axis",
                 required = false
             ),
@@ -1472,13 +1472,13 @@ function init_plotting_tool(config::Dict)
         parameters=[
             ToolParameter(
                 name = "script",
-                type = "str",
+                type = "string",
                 description = "the gnuplot script that defines the plot to be generated. This has to be a valid gnuplot script.",
                 required = true
             ),
             ToolParameter(
                 name = "working_directory",
-                type = "str",
+                type = "string",
                 description = "the working directory where the gnuplot command should be executed. This can be used to specify the location of any data files that the gnuplot script references.",
                 required = true
             )
